@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Araba Yarışı</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #webglCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background-color: #87CEEB; /* Gökyüzü mavisi */
+        }
+        .controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .light-controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="webglCanvas"></canvas>
+    
+    <div class="controls">
+        <h3>Kontroller:</h3>
+        <p>W/S: İleri/Geri</p>
+        <p>A/D: Sol/Sağ</p>
+        <p>Ok Tuşları: Kamerayı Döndür</p>
+        <p>Q/E: Kamerayı Yukarı/Aşağı</p>
+        <p>1/2/3: Araba Seçimi</p>
+    </div>
+    
+    <div class="light-controls">
+        <h3>Işık Kontrolleri:</h3>
+        <p>J/L: Işığı Sol/Sağa Taşı</p>
+        <p>I/K: Işığı İleri/Geri Taşı</p>
+        <p>U/O: Işığı Yukarı/Aşağı Taşı</p>
+        <p>+/-: Işık Parlaklığını Artır/Azalt</p>
+    </div>
+    
+    <script src="matrix.js"></script>
+    <script src="shapes.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
