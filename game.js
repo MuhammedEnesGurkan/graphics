@@ -1,144 +1,269 @@
-// WebGL Araba Yarış Simülasyonu
+// 3D WebGL Araba Yarış Simülasyonu - Three.js ile GLB Asset Desteği
+
+//import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+//import { GLTFLoader } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/GLTFLoader.js';
 
 // Global değişkenler
-let gl;
-let canvas;
-let program;
+
+let scene, camera, renderer;
 let carPosition = 1; // 0 = en sol şerit, 3 = en sağ şerit (toplam 4 şerit)
-let carY = 0; // Arabanın dikey pozisyonu (ekranda yukarı doğru hareket edecek)
-let initialCarSpeed = 5; // Başlangıç hızı
-let carSpeed = initialCarSpeed; // Arabanın yukarı hareket hızı
+let carZ = 0; // Arabanın Z pozisyonu (ileri hareket)
+let initialCarSpeed = 0.1; // Başlangıç hızı
+let carSpeed = initialCarSpeed; // Arabanın ileri hareket hızı
 let obstacles = [];
 let gameActive = true;
 let score = 0;
-let roadOffset = 0;
+let cameraHeight = 2.0;
+let cameraDistance = 8.0;
 
-// Vertex shader
-const vsSource = `
-    attribute vec2 aPosition;
-    attribute vec3 aColor;
-    varying vec3 vColor;
-    uniform vec2 uResolution;
-    void main() {
-        // Ekran oranlarını ayarla
-        vec2 zeroToOne = aPosition / uResolution;
-        vec2 zeroToTwo = zeroToOne * 2.0;
-        vec2 clipSpace = zeroToTwo - 1.0;
-        gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-        
-        vColor = aColor;
-    }
-`;
+// 3D Modeller
+let carModel = null;
+let roadSegments = [];
+let obstacleModels = [];
 
-// Fragment shader
-const fsSource = `
-    precision mediump float;
-    varying vec3 vColor;
-    void main() {
-        gl_FragColor = vec4(vColor, 1.0);
-    }
-`;
+// GLB Loader
+const loader = new THREE.GLTFLoader();
+
+// Sahne nesneleri
+let playerCar = null;
+let roadGroup = null;
 
 // Oyunu başlat
-function init() {
-    // Canvas ve WebGL bağlamını al
-    canvas = document.getElementById('gameCanvas');
-    gl = canvas.getContext('webgl');
-
-    if (!gl) {
-        alert('WebGL desteklenmiyor!');
-        return;
-    }
-
-    // Canvas boyutunu ayarla
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Shader programını oluştur
-    program = createShaderProgram();
-
-    // Buffer'ları oluştur
-    createBuffers();
-
+async function init() {
+    const canvas = document.getElementById('gameCanvas');
+    
+    // Three.js sahne kurulumu
+    scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x87CEEB, 50, 200);
+    
+    // Kamera
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setClearColor(0x87CEEB); // Gökyüzü mavisi
+    
+    // Işıklar
+    setupLighting();
+    
+    // Pencere boyut değişikliği
+    window.addEventListener('resize', onWindowResize);
+    
+    // Kontroller
+    document.addEventListener('keydown', handleKeyPress);
+    
+    // Yolu oluştur
+    createRoad();
+    
+    // Araba modelini yükle
+    await loadCarModel();
+    
     // Engelleri oluştur
     createObstacles();
-
-    // Klavye olaylarını dinle
-    document.addEventListener('keydown', handleKeyPress);
-
+    
     // Oyun döngüsünü başlat
-    requestAnimationFrame(gameLoop);
+    gameLoop();
 }
 
-// Canvas boyutunu ayarla
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    gl.viewport(0, 0, canvas.width, canvas.height);
-}
-
-// Shader programını oluştur
-function createShaderProgram() {
-    // Vertex shader'ı derle
-    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vertexShader, vsSource);
-    gl.compileShader(vertexShader);
-
-    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-        console.error('Vertex shader derleme hatası:', gl.getShaderInfoLog(vertexShader));
-        gl.deleteShader(vertexShader);
-        return null;
-    }
-
-    // Fragment shader'ı derle
-    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragmentShader, fsSource);
-    gl.compileShader(fragmentShader);
-
-    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-        console.error('Fragment shader derleme hatası:', gl.getShaderInfoLog(fragmentShader));
-        gl.deleteShader(fragmentShader);
-        gl.deleteShader(vertexShader);
-        return null;
-    }
-
-    // Shader programını oluştur ve linkleme
-    const program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        console.error('Shader program linkleme hatası:', gl.getProgramInfoLog(program));
-        return null;
-    }
-
-    return program;
-}
-
-// Araba ve engel için buffer'ları oluştur
-let carBuffer, obstacleBuffer, roadBuffer;
-function createBuffers() {
-    // Araba için buffer oluştur
-    carBuffer = {
-        vertices: gl.createBuffer(),
-        colors: gl.createBuffer()
-    };
+function setupLighting() {
+    // Güneş ışığı
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(100, 100, 50);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+    directionalLight.shadow.camera.left = -100;
+    directionalLight.shadow.camera.right = 100;
+    directionalLight.shadow.camera.top = 100;
+    directionalLight.shadow.camera.bottom = -100;
+    scene.add(directionalLight);
     
-    // Engel için buffer oluştur
-    obstacleBuffer = {
-        vertices: gl.createBuffer(),
-        colors: gl.createBuffer()
-    };
+    // Ortam ışığı
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    scene.add(ambientLight);
     
-    // Yol için buffer oluştur
-    roadBuffer = {
-        vertices: gl.createBuffer(),
-        colors: gl.createBuffer()
-    };
+    // Kamera ışığı (arabayı aydınlatmak için)
+    const cameraLight = new THREE.SpotLight(0xffffff, 0.5);
+    cameraLight.position.set(0, 10, 0);
+    scene.add(cameraLight);
 }
 
-// Klavye olaylarını işle
+async function loadCarModel() {
+    try {
+        // Hudson Hornet modelini yükle
+        const gltf = await new Promise((resolve, reject) => {
+            loader.load(
+                'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
+                resolve,
+                undefined,
+                reject
+            );
+        });
+        
+        carModel = gltf.scene;
+        
+        // Modeli ölçekle ve konumlandır
+        carModel.scale.set(0.5, 0.5, 0.5);
+        carModel.position.set(0, 0, 0);
+       // carModel.rotation.y = Math.PI; // Arabayı döndür (ileri baksın)
+        
+        // Gölge ayarları
+        carModel.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        
+        // Oyuncu arabasını oluştur
+        playerCar = carModel.clone();
+        playerCar.position.set(getXFromLane(carPosition), 0.2, carZ);
+        scene.add(playerCar);
+        
+        console.log('Hudson Hornet modeli başarıyla yüklendi!');
+        
+    } catch (error) {
+        console.warn('GLB model yüklenemedi, fallback küp kullanılıyor:', error);
+        createFallbackCar();
+    }
+}
+
+function createFallbackCar() {
+    // Model yüklenemezse basit araba geometrisi oluştur
+    const carGroup = new THREE.Group();
+    
+    // Ana gövde
+    const bodyGeometry = new THREE.BoxGeometry(1, 0.5, 2);
+    const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.25;
+    body.castShadow = true;
+    carGroup.add(body);
+    
+    // Üst kısım (cam)
+    const roofGeometry = new THREE.BoxGeometry(0.8, 0.4, 1.2);
+    const roofMaterial = new THREE.MeshLambertMaterial({ color: 0x88ddff });
+    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+    roof.position.y = 0.7;
+    roof.position.z = 0.2;
+    roof.castShadow = true;
+    carGroup.add(roof);
+    
+    // Tekerlekler
+    const wheelGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
+    const wheelMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    
+    const wheels = [
+        [-0.4, 0.1, 0.8],   // Sol ön
+        [0.4, 0.1, 0.8],    // Sağ ön
+        [-0.4, 0.1, -0.8],  // Sol arka
+        [0.4, 0.1, -0.8]    // Sağ arka
+    ];
+    
+    wheels.forEach(pos => {
+        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        wheel.position.set(pos[0], pos[1], pos[2]);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.castShadow = true;
+        carGroup.add(wheel);
+    });
+    
+    playerCar = carGroup;
+    playerCar.position.set(getXFromLane(carPosition), 0, carZ);
+    scene.add(playerCar);
+}
+function createRoad() {
+  roadGroup = new THREE.Group();
+  const ROAD_WIDTH = 8;
+
+  // 1) Ana yol segmentleri
+  const roadGeometry = new THREE.PlaneGeometry(ROAD_WIDTH, 4);
+  const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+
+  for (let i = -20; i < 60; i++) {
+    const roadSegment = new THREE.Mesh(roadGeometry, roadMaterial);
+    roadSegment.rotation.x = -Math.PI / 2;
+    roadSegment.position.set(0, 0.01, i * 4);
+    roadSegment.receiveShadow = true;
+    roadGroup.add(roadSegment);
+
+    // 2) Şerit çizgileri
+    if (i % 2 === 0) {
+      for (let lane = 1; lane < 4; lane++) {
+        const lineGeo = new THREE.BoxGeometry(0.1, 0.01, 1.5);
+        const lineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const line = new THREE.Mesh(lineGeo, lineMat);
+        line.rotation.x = -Math.PI / 2;
+        // getXFromLane, ROAD_WIDTH’e göre X konumunu hesaplar
+        line.position.set(getXFromLane(lane), 0.02, i * 4);
+        roadGroup.add(line);
+      }
+    }
+  }
+
+  // 3) Çim kenarları
+  const grassGeo = new THREE.PlaneGeometry(100, 400);
+  const grassMat = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+
+  const leftGrass = new THREE.Mesh(grassGeo, grassMat);
+  leftGrass.rotation.x = -Math.PI / 2;
+  leftGrass.position.set(-ROAD_WIDTH/2 - 1, -0.01, 50);
+  roadGroup.add(leftGrass);
+
+  const rightGrass = new THREE.Mesh(grassGeo, grassMat);
+  rightGrass.rotation.x = -Math.PI / 2;
+  rightGrass.position.set( ROAD_WIDTH/2 + 1, -0.01, 50);
+  roadGroup.add(rightGrass);
+
+  scene.add(roadGroup);
+}
+
+
+function createObstacles() {
+    obstacles = [];
+    const obstacleCount = 50;
+    
+    // Engel geometrileri
+    const obstacleGeometries = [
+        new THREE.BoxGeometry(0.8, 0.8, 0.8),    // Küp
+        new THREE.ConeGeometry(0.4, 1.2, 8),     // Koni
+        new THREE.SphereGeometry(0.5, 8, 6)      // Küre
+    ];
+    
+    const obstacleColors = [0x0066ff, 0xff6600, 0xffff00];
+    
+    for (let i = 0; i < obstacleCount; i++) {
+        const lane = Math.floor(Math.random() * 4);
+        const z = (i + 3) * 6 + Math.random() * 3;
+        const obstacleType = Math.floor(Math.random() * 3);
+        
+        const material = new THREE.MeshLambertMaterial({ color: obstacleColors[obstacleType] });
+        const obstacle = new THREE.Mesh(obstacleGeometries[obstacleType], material);
+        
+        obstacle.position.set(getXFromLane(lane), 0.5, z);
+        obstacle.castShadow = true;
+        
+        obstacle.userData = {
+            lane: lane,
+            z: z,
+            type: obstacleType,
+            originalY: 0.5
+        };
+        
+        obstacles.push(obstacle);
+        scene.add(obstacle);
+    }
+}
+
+function getXFromLane(lane) {
+    return (lane - 1.5) * 2; // Şerit pozisyonunu X koordinatına çevir
+}
+
 function handleKeyPress(event) {
     if (!gameActive && event.code === 'Space') {
         restartGame();
@@ -151,336 +276,139 @@ function handleKeyPress(event) {
         case 'ArrowLeft':
             if (carPosition > 0) {
                 carPosition--;
+                updateCarPosition();
             }
             break;
         case 'ArrowRight':
             if (carPosition < 3) {
                 carPosition++;
+                updateCarPosition();
             }
             break;
     }
 }
 
-// Sabit engelleri oluştur
-function createObstacles() {
-    obstacles = [];
-    const obstacleCount = 50; // Toplam engel sayısı
-    
-    // Sabit engelleri oluştur
-    for (let i = 0; i < obstacleCount; i++) {
-        // Rastgele bir şerit seç (0-3 arası)
-        const lane = Math.floor(Math.random() * 4);
-        
-        // Rastgele bir Y pozisyonu belirle (engeller arası mesafe en az 150 olsun)
-        const y = i * 150 + Math.random() * 100;
-        
-        // Engel tipini belirle (0-2 arası)
-        const obstacleType = Math.floor(Math.random() * 3);
-        
-        // Engeli ekle
-        obstacles.push({
-            lane: lane,
-            y: y,
-            type: obstacleType
-        });
+function updateCarPosition() {
+    if (playerCar) {
+        const targetX = getXFromLane(carPosition);
+        // Yumuşak geçiş için tween benzeri hareket
+        const currentX = playerCar.position.x;
+        const difference = targetX - currentX;
+        playerCar.position.x += difference * 0.3;
     }
 }
 
-// Oyun döngüsü
 function gameLoop() {
     if (!gameActive) {
         requestAnimationFrame(gameLoop);
         return;
     }
     
-    // Ekranı temizle
-    gl.clearColor(0.2, 0.2, 0.2, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    // Hızı artır
+    const MAX_SPEED = 0.3;        // istediğin en yüksek hız
+// …
+carSpeed = initialCarSpeed + Math.floor(score / 1000) * 0.000001;
+// clamping:
+carSpeed = Math.min(carSpeed, MAX_SPEED);
+
+    document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
     
-    // Programı kullan
-    gl.useProgram(program);
+    // Araba ileri hareket
+    carZ += carSpeed;
     
-    // Çözünürlük bilgisini gönder
-    const uResolution = gl.getUniformLocation(program, 'uResolution');
-    gl.uniform2f(uResolution, canvas.width, canvas.height);
+    // Araba pozisyonunu güncelle
+    if (playerCar) {
+        playerCar.position.z = carZ;
+        updateCarPosition();
+        
+        // Araba animasyonu (hafif sallanma)
+        playerCar.rotation.z = Math.sin(Date.now() * 0.01) * 0.02;
+    }
     
-    // Skora göre arabanın hızını artır (her 100 puanda 1 birim)
-    carSpeed = initialCarSpeed + Math.floor(score / 100);
-    document.getElementById('speedValue').textContent = carSpeed;
+    // Kamerayı güncelle
+    const carX = getXFromLane(carPosition);
+    camera.position.set(carX, cameraHeight, carZ - cameraDistance);
+    camera.lookAt(carX, 0, carZ + 5);
     
-    // Arabayı yukarı hareket ettir
-    carY += carSpeed;
+    // Yolu hareket ettir
+    if (roadGroup) {
+        roadGroup.position.z = -carZ;
+    }
     
-    // Yol kaydırma efekti için offset hesapla
-    roadOffset = (carY % 40);
-    
-    // Yolu ve şeritleri çiz
-    drawRoad();
-    
-    // Arabayı çiz
-    drawCar();
-    
-    // Engelleri çiz ve çarpışma kontrolü yap
-    drawObstaclesAndCheckCollisions();
+    // Engelleri güncelle ve kontrol et
+    updateObstacles();
     
     // Puanı güncelle
-    score += carSpeed;
+    score += carSpeed * 100;
     document.getElementById('score').textContent = Math.floor(score);
     
-    // Oyun döngüsüne devam et
+    // Render
+    renderer.render(scene, camera);
     requestAnimationFrame(gameLoop);
 }
 
-// Yol ve şeritleri çiz
-function drawRoad() {
-    const roadWidth = canvas.width * 0.5;
-    const laneWidth = roadWidth / 4;
-    const roadLeft = (canvas.width - roadWidth) / 2;
+function updateObstacles() {
+    const carX = getXFromLane(carPosition);
     
-    // Yol arka planını çiz (koyu gri)
-    drawRectangle(
-        roadLeft, 0, roadWidth, canvas.height,
-        0.3, 0.3, 0.3
-    );
-    
-    // Şeritleri çiz (beyaz çizgiler)
-    for (let i = 1; i < 4; i++) {
-        const x = roadLeft + laneWidth * i;
+    for (const obstacle of obstacles) {
+        // Engel animasyonu
+        obstacle.position.y = obstacle.userData.originalY + Math.sin(Date.now() * 0.005 + obstacle.userData.z) * 0.1;
+        obstacle.rotation.y += 0.02;
         
-        // Şerit çizgileri - kesikli çizgiler
-        for (let j = -10; j < canvas.height / 20 + 10; j++) {
-            const yPos = j * 40 - (roadOffset % 40);
-            
-            drawRectangle(
-                x - 2, yPos, 4, 20,
-                1, 1, 1
-            );
-        }
-    }
-    
-    // Yol kenarlarını çiz (beyaz düz çizgiler)
-    drawRectangle(
-        roadLeft, 0, 4, canvas.height,
-        1, 1, 1
-    );
-    
-    drawRectangle(
-        roadLeft + roadWidth - 4, 0, 4, canvas.height,
-        1, 1, 1
-    );
-}
-
-// Dikdörtgen çiz
-function drawRectangle(x, y, width, height, r, g, b) {
-    const vertices = new Float32Array([
-        x, y,
-        x + width, y,
-        x + width, y + height,
-        x, y + height
-    ]);
-    
-    const colors = new Float32Array([
-        r, g, b,
-        r, g, b,
-        r, g, b,
-        r, g, b
-    ]);
-    
-    // Vertices
-    gl.bindBuffer(gl.ARRAY_BUFFER, roadBuffer.vertices);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    
-    const aPosition = gl.getAttribLocation(program, 'aPosition');
-    gl.enableVertexAttribArray(aPosition);
-    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
-    
-    // Colors
-    gl.bindBuffer(gl.ARRAY_BUFFER, roadBuffer.colors);
-    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
-    
-    const aColor = gl.getAttribLocation(program, 'aColor');
-    gl.enableVertexAttribArray(aColor);
-    gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 0, 0);
-    
-    // Dikdörtgeni çiz
-    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-}
-
-// Arabayı çiz
-function drawCar() {
-    const roadWidth = canvas.width * 0.5;
-    const laneWidth = roadWidth / 4;
-    const roadLeft = (canvas.width - roadWidth) / 2;
-    
-    // Arabanın bulunduğu şeritin x konumu
-    const carX = roadLeft + laneWidth * carPosition + laneWidth / 2;
-    
-    // Arabanın çizileceği y pozisyonu - Ekranda yukarı doğru hareket edecek
-    // carY değeri arttıkça arabanın ekrandaki konumu yukarı doğru hareket edecek
-    // Başlangıç konumu ekranın altından biraz yukarıda
-    const startY = canvas.height * 0.75; // Ekranın 3/4'ü
-    const maxDistance = startY - canvas.height * 0.25; // Maksimum hareket mesafesi
-    const movementProgress = Math.min(carY / 1000, 1); // 1000 birim ilerledikten sonra maksimum yüksekliğe ulaşır
-    const carScreenY = startY - movementProgress * maxDistance;
-    
-    // Arabayı çiz
-    const carWidth = 30;
-    const carHeight = 50;
-    
-    // Arabanın gövdesi (kırmızı dikdörtgen)
-    drawRectangle(
-        carX - carWidth/2, carScreenY - carHeight/2,
-        carWidth, carHeight,
-        1, 0, 0
-    );
-    
-    // Arabanın ön kısmı (turuncu üçgen)
-    const vertices = new Float32Array([
-        carX - carWidth/2, carScreenY - carHeight/2,
-        carX + carWidth/2, carScreenY - carHeight/2,
-        carX, carScreenY - carHeight/2 - 20
-    ]);
-    
-    const colors = new Float32Array([
-        1, 0.5, 0,
-        1, 0.5, 0,
-        1, 0.5, 0
-    ]);
-    
-    // Vertices
-    gl.bindBuffer(gl.ARRAY_BUFFER, carBuffer.vertices);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    
-    const aPosition = gl.getAttribLocation(program, 'aPosition');
-    gl.enableVertexAttribArray(aPosition);
-    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
-    
-    // Colors
-    gl.bindBuffer(gl.ARRAY_BUFFER, carBuffer.colors);
-    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
-    
-    const aColor = gl.getAttribLocation(program, 'aColor');
-    gl.enableVertexAttribArray(aColor);
-    gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 0, 0);
-    
-    // Üçgeni çiz
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    
-    // Arabanın tekerleklerini çiz (siyah kareler)
-    // Sol ön tekerlek
-    drawRectangle(
-        carX - carWidth/2 - 5, carScreenY - carHeight/3,
-        10, 15,
-        0, 0, 0
-    );
-    
-    // Sağ ön tekerlek
-    drawRectangle(
-        carX + carWidth/2 - 5, carScreenY - carHeight/3,
-        10, 15,
-        0, 0, 0
-    );
-    
-    // Sol arka tekerlek
-    drawRectangle(
-        carX - carWidth/2 - 5, carScreenY + carHeight/4,
-        10, 15,
-        0, 0, 0
-    );
-    
-    // Sağ arka tekerlek
-    drawRectangle(
-        carX + carWidth/2 - 5, carScreenY + carHeight/4,
-        10, 15,
-        0, 0, 0
-    );
-}
-
-// Engelleri çiz ve çarpışma kontrolünü yap
-function drawObstaclesAndCheckCollisions() {
-    const roadWidth = canvas.width * 0.5;
-    const laneWidth = roadWidth / 4;
-    const roadLeft = (canvas.width - roadWidth) / 2;
-    
-    // Arabanın ekrandaki pozisyonu
-    const startY = canvas.height * 0.75;
-    const maxDistance = startY - canvas.height * 0.25;
-    const movementProgress = Math.min(carY / 1000, 1);
-    const carScreenY = startY - movementProgress * maxDistance;
-    
-    const carWidth = 30;
-    const carHeight = 70; // Çarpışma algılaması için biraz daha yüksek
-    
-    // Ekranda görünen engelleri çiz
-    for (let i = 0; i < obstacles.length; i++) {
-        const obstacle = obstacles[i];
-        
-        // Engelin ekrandaki Y pozisyonunu hesapla
-        // carY: Arabanın başlangıçtan itibaren aldığı yol
-        // obstacle.y: Engelin başlangıçtan itibaren konumu
-        // Eğer carY > obstacle.y ise araba engeli geçmiş demektir
-        const relativePosition = obstacle.y - carY;
-        
-        // Engelin ekrandaki pozisyonu (araba ilerledikçe engeller yukarıdan aşağıya doğru görünecek)
-        const obstacleScreenY = relativePosition + carScreenY;
-        
-        // Ekranda görünüyor mu kontrol et
-        if (obstacleScreenY < canvas.height + 50 && obstacleScreenY > -50) {
-            // Engelin bulunduğu şeritin x konumu
-            const obstacleX = roadLeft + laneWidth * obstacle.lane + laneWidth / 2;
-            
-            // Engelin tipine göre farklı şekil ve renk kullan
-            let r = 0, g = 0, b = 1; // Varsayılan mavi
-            let obstacleWidth = 30;
-            let obstacleHeight = 30;
-            
-            if (obstacle.type === 1) {
-                r = 0; g = 1; b = 0; // Yeşil engel
-                obstacleWidth = 40; // Daha geniş
-                obstacleHeight = 20;
-            } else if (obstacle.type === 2) {
-                r = 1; g = 1; b = 0; // Sarı engel
-                obstacleWidth = 35;
-                obstacleHeight = 35;
-            }
-            
-            // Engeli çiz
-            drawRectangle(
-                obstacleX - obstacleWidth/2, obstacleScreenY - obstacleHeight/2,
-                obstacleWidth, obstacleHeight,
-                r, g, b
-            );
-            
-            // Çarpışma kontrolü
-            // Araba pozisyonu ve engel aynı şeritte mi ve yeterince yakın mı?
-            if (obstacle.lane === carPosition && 
-                Math.abs(obstacleScreenY - carScreenY) < (carHeight/2 + obstacleHeight/2 - 10)) {
+        // Çarpışma kontrolü
+        if (obstacle.userData.lane === carPosition) {
+            const distance = Math.abs(obstacle.userData.z - carZ);
+            if (distance < 1.8) {
                 gameOver();
-                break;
+                return;
             }
+        }
+        
+        // Geçilen engelleri yeniden konumlandır
+        if (obstacle.userData.z < carZ - 20) {
+            obstacle.userData.z += 120;
+            obstacle.userData.lane = Math.floor(Math.random() * 4);
+            obstacle.position.set(getXFromLane(obstacle.userData.lane), obstacle.userData.originalY, obstacle.userData.z);
         }
     }
 }
 
-// Oyun bittiğinde
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
 function gameOver() {
     gameActive = false;
     document.getElementById('finalScore').textContent = Math.floor(score);
     document.getElementById('gameOver').style.display = 'block';
 }
 
-// Oyunu yeniden başlat
 function restartGame() {
     gameActive = true;
     score = 0;
     carPosition = 1;
-    carY = 0;
+    carZ = 0;
     carSpeed = initialCarSpeed;
+    
+    // Engelleri sıfırla
+    obstacles.forEach(obstacle => {
+        scene.remove(obstacle);
+    });
     createObstacles();
+    
+    // Araba pozisyonunu sıfırla
+    if (playerCar) {
+        playerCar.position.set(getXFromLane(carPosition), 0.2, carZ);
+        playerCar.rotation.set(0, Math.PI, 0);
+    }
+    
+    // UI'yi güncelle
     document.getElementById('score').textContent = '0';
-    document.getElementById('speedValue').textContent = initialCarSpeed;
+    document.getElementById('speedValue').textContent = Math.floor(initialCarSpeed * 1000);
     document.getElementById('gameOver').style.display = 'none';
 }
 
-// Oyun yüklendiğinde başlat
+// Oyunu başlat
 window.onload = init;
