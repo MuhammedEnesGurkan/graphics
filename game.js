@@ -5,6 +5,47 @@
 
 // Global değişkenler
 // Harita tipleri - en başta global değişkenlerle birlikte tanımlanacak
+
+const OBSTACLE_GLB_MODELS = [
+    'graphics_three/assets/mater.glb',
+    'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
+    // diğer .glb yollarını ekleyebilirsin
+];
+function checkCollision(obstacle, playerCar) {
+    // Box3 ile çarpışma kontrolü
+    const box1 = new THREE.Box3().setFromObject(obstacle);
+    const box2 = new THREE.Box3().setFromObject(playerCar);
+
+    return box1.intersectsBox(box2);
+}
+let loadedObstacleModels = [];
+async function loadObstacleModels() {
+    for (let i = 0; i < OBSTACLE_GLB_MODELS.length; i++) {
+        try {
+            const gltf = await new Promise((resolve, reject) => {
+                loader.load(
+                    OBSTACLE_GLB_MODELS[i],
+                    resolve,
+                    undefined,
+                    reject
+                );
+            });
+            const model = gltf.scene;
+            model.scale.set(0.4, 0.4, 0.4);
+            model.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            loadedObstacleModels.push(model);
+        } catch (err) {
+            loadedObstacleModels.push(null);
+        }
+    }
+}
+
+
 const MAP_TYPES = [
   { 
     name: "Normal", 
@@ -99,10 +140,15 @@ let roadGroup = null;
 
 // Oyunu başlat
 async function init() {
+    scene = new THREE.Scene();
   const canvas = document.getElementById('gameCanvas');
+  await loadCarModel();
+await loadObstacleModels();
+createObstacles();
+
   
   // Three.js sahne kurulumu
-  scene = new THREE.Scene();
+
   scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
   
   // Kamera
@@ -153,13 +199,19 @@ function setupLighting() {
     scene.add(directionalLight);
     
     // Ortam ışığı
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
     scene.add(ambientLight);
     
     // Kamera ışığı (arabayı aydınlatmak için)
     const cameraLight = new THREE.SpotLight(0xffffff, 0.5);
     cameraLight.position.set(0, 10, 0);
     scene.add(cameraLight);
+    const spotLight = new THREE.SpotLight(0xffffff, 1.5);
+    spotLight.position.set(0, 30, 0);
+    spotLight.angle = Math.PI / 3;
+    spotLight.penumbra = 0.5;
+    spotLight.castShadow = true;
+    scene.add(spotLight);
 }
 
 async function loadCarModel() {
@@ -167,7 +219,7 @@ async function loadCarModel() {
         // Hudson Hornet modelini yükle
         const gltf = await new Promise((resolve, reject) => {
             loader.load(
-                'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
+                'graphics_three/assets/lightning_mcqueen_cars_3.glb',
                 resolve,
                 undefined,
                 reject
@@ -459,42 +511,38 @@ function addMapDecorations(mapType) {
   }
 }
 
-
 function createObstacles() {
     obstacles = [];
     const obstacleCount = 50;
-    
-    // Engel geometrileri
-    const obstacleGeometries = [
-        new THREE.BoxGeometry(0.8, 0.8, 0.8),    // Küp
-        new THREE.ConeGeometry(0.4, 1.2, 8),     // Koni
-        new THREE.SphereGeometry(0.5, 8, 6)      // Küre
-    ];
-    
-    const obstacleColors = [0x0066ff, 0xff6600, 0xffff00];
-    
+
     for (let i = 0; i < obstacleCount; i++) {
         const lane = Math.floor(Math.random() * 4);
         const z = (i + 3) * 6 + Math.random() * 3;
-        const obstacleType = Math.floor(Math.random() * 3);
-        
-        const material = new THREE.MeshLambertMaterial({ color: obstacleColors[obstacleType] });
-        const obstacle = new THREE.Mesh(obstacleGeometries[obstacleType], material);
-        
-        obstacle.position.set(getXFromLane(lane), 0.5, z);
+
+        // Rastgele bir GLB model seç
+        if (loadedObstacleModels.length === 0) continue; // Hiç model yoksa atla
+
+        const modelIdx = Math.floor(Math.random() * loadedObstacleModels.length);
+        const glbModel = loadedObstacleModels[modelIdx];
+        if (!glbModel) continue; // Model yüklü değilse geç
+
+        // GLB modelden yeni bir klon oluştur
+        const obstacle = glbModel.clone();
+        obstacle.position.set(getXFromLane(lane), 0.2, z); // Y pozisyonu ayarla
         obstacle.castShadow = true;
-        
+
         obstacle.userData = {
             lane: lane,
             z: z,
-            type: obstacleType,
-            originalY: 0.5
+            originalY: obstacle.position.y,
+            isGLBModel: true
         };
-        
+
         obstacles.push(obstacle);
         scene.add(obstacle);
     }
 }
+
 function getXFromLane(lane) {
     // Lane: 0=en sol, 3=en sağ şerit
     // Şeritler arasında 2 birim mesafe, merkez -3 birim
@@ -615,33 +663,38 @@ function gameLoop() {
 }
 
 // Harita değişimi için bildirim
-
 function updateObstacles() {
-  const carX = getXFromLane(carPosition);
-  
   for (const obstacle of obstacles) {
-    // Engel animasyonu
-    obstacle.position.y = obstacle.userData.originalY + Math.sin(Date.now() * 0.005 + obstacle.userData.z) * 0.1;
-    obstacle.rotation.y += 0.02;
-    
-    // Çarpışma kontrolü
-    if (obstacle.userData.lane === carPosition) {
-      const distance = Math.abs(obstacle.userData.z - carZ);
-      if (distance < 1.8) {
-        gameOver();
-        return;
-      }
+    // ANİMASYON
+    if (obstacle.userData.isGLBModel) {
+      obstacle.rotation.y += 0.01;
+      obstacle.position.y = obstacle.userData.originalY + Math.sin(Date.now() * 0.003 + obstacle.userData.z) * 0.05;
+    } else {
+      obstacle.position.y = obstacle.userData.originalY + Math.sin(Date.now() * 0.005 + obstacle.userData.z) * 0.1;
+      obstacle.rotation.y += 0.02;
     }
-    
+
+    // -------------- YENİ ÇARPIŞMA KONTROLÜ -----------------
+    // Her engel ve playerCar için kutu oluştur ve kesişiyor mu bak
+    const playerBox = new THREE.Box3().setFromObject(playerCar);
+    const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+
+    if (playerBox.intersectsBox(obstacleBox)) {
+      gameOver();
+      return;
+    }
+    // ------------------------------------------------------
+
     // Geçilen engelleri yeniden konumlandır
     if (obstacle.userData.z < carZ - 20) {
-      // Daha ileride yeniden konumlandır (100-160 birim arasında)
       obstacle.userData.z = carZ + 100 + Math.random() * 60;
       obstacle.userData.lane = Math.floor(Math.random() * 4);
       obstacle.position.set(getXFromLane(obstacle.userData.lane), obstacle.userData.originalY, obstacle.userData.z);
     }
   }
 }
+
+
 
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
