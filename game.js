@@ -131,6 +131,9 @@ let nitroActive = false;
 let nitroTimer = 0;
 let brakeActive = false;
 let nitroGlow, nitroLeft, nitroRight;
+// Mevcut nitro değişkenlerinin yanına ekleyin:
+let nitroLights = [];
+let carHeadlights = [];
 
 
 // 3D Modeller
@@ -306,6 +309,35 @@ nitroRight = new THREE.Mesh(
 );
 nitroRight.position.set(0.18, 0.22, -1.05);
 playerCar.add(nitroRight);
+// Mevcut nitro sprite kodlarının sonrasına ekleyin:
+
+// Araba farları oluştur
+const headlightLeft = new THREE.SpotLight(0xffffff, 1, 30, Math.PI / 6, 0.5);
+headlightLeft.position.set(-0.5, 0.5, 1.5);
+headlightLeft.target.position.set(-1, 0, 5);
+headlightLeft.castShadow = true;
+playerCar.add(headlightLeft);
+playerCar.add(headlightLeft.target);
+
+const headlightRight = new THREE.SpotLight(0xffffff, 1, 30, Math.PI / 6, 0.5);
+headlightRight.position.set(0.5, 0.5, 1.5);
+headlightRight.target.position.set(1, 0, 5);
+headlightRight.castShadow = true;
+playerCar.add(headlightRight);
+playerCar.add(headlightRight.target);
+
+carHeadlights.push(headlightLeft, headlightRight);
+
+// Nitro ışıkları oluştur
+const nitroLightLeft = new THREE.PointLight(0xff4400, 0, 8);
+nitroLightLeft.position.set(-0.18, 0.22, -1.05);
+playerCar.add(nitroLightLeft);
+
+const nitroLightRight = new THREE.PointLight(0xff4400, 0, 8);
+nitroLightRight.position.set(0.18, 0.22, -1.05);
+playerCar.add(nitroLightRight);
+
+nitroLights.push(nitroLightLeft, nitroLightRight);
 
 nitroGlow.visible = false;
 nitroLeft.visible = false;
@@ -713,7 +745,8 @@ function gameLoop() {
   targetSpeed = Math.min(targetSpeed, MAX_SPEED);
   if (brakeActive) targetSpeed -= 0.07;
   // Nitro aktifse hızı artır
- if (nitroActive) {
+ // Mevcut nitro kontrol kodunu şununla değiştirin:
+if (nitroActive) {
     nitroSpriteLeft.visible = true;
     nitroSpriteRight.visible = true;
     if (nitroGlow && nitroLeft && nitroRight) {
@@ -721,6 +754,12 @@ function gameLoop() {
         nitroLeft.visible = true;
         nitroRight.visible = true;
     }
+    
+    // Nitro ışıklarını aç
+    nitroLights.forEach(light => {
+        light.intensity = 2 + Math.random() * 0.5; // Titreyen efekt
+    });
+    
     targetSpeed += 0.18;
 } else {
     nitroSpriteLeft.visible = false;
@@ -730,8 +769,11 @@ function gameLoop() {
         nitroLeft.visible = false;
         nitroRight.visible = false;
     }
-
-
+    
+    // Nitro ışıklarını kapat
+    nitroLights.forEach(light => {
+        light.intensity = 0;
+    });
 }
 
   // Sınırları koru
@@ -929,8 +971,12 @@ function restartGame() {
  
  // İlk haritayı yeniden oluştur
  createRoad(MAP_TYPES[0]);
+ nitroLights.forEach(light => {
+    light.intensity = 0;
+});
  
  console.log('Oyun yeniden başlatıldı!');
+
 }
 
 function onWindowResize() {
