@@ -342,6 +342,17 @@ nitroLights.push(nitroLightLeft, nitroLightRight);
 nitroGlow.visible = false;
 nitroLeft.visible = false;
 nitroRight.visible = false;
+// --- Arka far PointLight'ları (KIRMIZI) ---
+const nitroTailLightLeft = new THREE.PointLight(0xff0000, 0, 5);
+nitroTailLightLeft.position.set(-0.32, 0.28, -1.12); // Sol arka far
+playerCar.add(nitroTailLightLeft);
+
+const nitroTailLightRight = new THREE.PointLight(0xff0000, 0, 5);
+nitroTailLightRight.position.set(0.32, 0.28, -1.12); // Sağ arka far
+playerCar.add(nitroTailLightRight);
+
+// Tüm nitro ışıklarını diziye ekle
+nitroLights.push(nitroLightLeft, nitroLightRight, nitroTailLightLeft, nitroTailLightRight);
 
 
         
@@ -745,7 +756,7 @@ function gameLoop() {
   targetSpeed = Math.min(targetSpeed, MAX_SPEED);
   if (brakeActive) targetSpeed -= 0.07;
   // Nitro aktifse hızı artır
- // Mevcut nitro kontrol kodunu şununla değiştirin:
+ 
 if (nitroActive) {
     nitroSpriteLeft.visible = true;
     nitroSpriteRight.visible = true;
@@ -754,10 +765,22 @@ if (nitroActive) {
         nitroLeft.visible = true;
         nitroRight.visible = true;
     }
+    const time = Date.now() * 0.01;
+    if (nitroLeft && nitroRight && nitroGlow) {
+        nitroLeft.material.opacity = 0.5 + Math.sin(time) * 0.2;
+        nitroRight.material.opacity = 0.5 + Math.sin(time + 1) * 0.2;
+        nitroGlow.material.opacity = 0.3 + Math.sin(time * 1.5) * 0.2;
+    }
     
     // Nitro ışıklarını aç
     nitroLights.forEach(light => {
         light.intensity = 2 + Math.random() * 0.5; // Titreyen efekt
+    });
+    
+    // ARABA FARLARINI DA PARLAT (YENİ EKLENDİ!)
+    carHeadlights.forEach(headlight => {
+        headlight.intensity = 2 + Math.random() * 0.3; // Normal 1'den 2'ye çıkar
+        headlight.color.setHex(0xaaffff); // Mavi-beyaz nitro rengi
     });
     
     targetSpeed += 0.18;
@@ -773,6 +796,12 @@ if (nitroActive) {
     // Nitro ışıklarını kapat
     nitroLights.forEach(light => {
         light.intensity = 0;
+    });
+    
+    // ARABA FARLARINI NORMALE DÖNDür (YENİ EKLENDİ!)
+    carHeadlights.forEach(headlight => {
+        headlight.intensity = 1; // Normal parlaklığa dön
+        headlight.color.setHex(0xffffff); // Normal beyaz renk
     });
 }
 
