@@ -5,49 +5,6 @@
 
 // Global değişkenler
 // Harita tipleri - en başta global değişkenlerle birlikte tanımlanacak
-
-const OBSTACLE_GLB_MODELS = [
-    'graphics_three/assets/mater.glb',
-    'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
-    // diğer .glb yollarını ekleyebilirsin
-];
-
-function checkCollision(obstacle, playerCar) {
-    // Box3 ile çarpışma kontrolü
-    const box1 = new THREE.Box3().setFromObject(obstacle);
-    const box2 = new THREE.Box3().setFromObject(playerCar);
-
-    return box1.intersectsBox(box2);
-}
-
-let loadedObstacleModels = [];
-
-async function loadObstacleModels() {
-    for (let i = 0; i < OBSTACLE_GLB_MODELS.length; i++) {
-        try {
-            const gltf = await new Promise((resolve, reject) => {
-                loader.load(
-                    OBSTACLE_GLB_MODELS[i],
-                    resolve,
-                    undefined,
-                    reject
-                );
-            });
-            const model = gltf.scene;
-            model.scale.set(0.4, 0.4, 0.4);
-            model.traverse(child => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                }
-            });
-            loadedObstacleModels.push(model);
-        } catch (err) {
-            loadedObstacleModels.push(null);
-        }
-    }
-}
-
 const MAP_TYPES = [
   { 
     name: "Normal", 
@@ -78,6 +35,258 @@ const MAP_TYPES = [
     fogColor: 0x00BFFF
   }
 ];
+
+// Geçerli harita indeksi
+let currentMapIndex = 0;
+let scene, camera, renderer;
+let carPosition = 1; // 0 = en sol şerit, 3 = en sağ şerit (toplam 4 şerit)
+let carZ = 0; // Arabanın Z pozisyonu (ileri hareket)
+let initialCarSpeed = 0.1; // Başlangıç hızı
+let carSpeed = initialCarSpeed; // Arabanın ileri hareket hızı
+let obstacles = [];
+let gameActive = true;
+let score = 0;
+let cameraHeight = 2.0;
+let cameraDistance = 8.0;
+
+// 3D Modeller
+let carModel = null;
+let roadSegments = [];
+let obstacleModels = [];
+
+// GLB Loader
+const loader = new THREE.GLTFLoader();
+
+// Sahne nesneleri
+let playerCar = null;
+let roadGroup = null;
+
+// 🎵 MÜZİK SİSTEMİ
+class GameMusicSystem {
+  constructor() {
+    this.audioContext = null;
+    this.masterGainNode = null;
+    this.isPlaying = false;
+    this.isMuted = false;
+    this.volume = 0.3;
+    this.currentTheme = 'normal';
+    this.oscillators = [];
+    this.intervalId = null;
+  }
+
+  async init() {
+    try {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      this.masterGainNode = this.audioContext.createGain();
+      this.masterGainNode.connect(this.audioContext.destination);
+      this.masterGainNode.gain.setValueAtTime(this.volume, this.audioContext.currentTime);
+      
+      console.log("🎵 Müzik sistemi hazır!");
+      return true;
+    } catch (error) {
+      console.log("Müzik sistemi başlatılamadı:", error);
+      return false;
+    }
+  }
+
+  // Tema müzikleri - her tema için farklı melodi
+  getThemeMusic(theme) {
+    const themes = {
+      normal: {
+        name: "Highway Cruiser",
+        bpm: 120,
+        scale: [440, 494, 523, 587, 659, 698, 784, 880], // A major scale
+        pattern: [0, 2, 4, 2, 0, 4, 6, 4, 2, 0, 2, 4],
+        bass: [220, 220, 277, 277, 330, 330, 277, 277],
+        rhythm: [1, 0.5, 0.5, 1, 1, 0.5, 0.5, 1]
+      },
+      desert: {
+        name: "Desert Storm",
+        bpm: 100,
+        scale: [440, 466, 523, 554, 659, 698, 740, 880], // Arabic-ish scale
+        pattern: [0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 2, 0],
+        bass: [220, 233, 247, 220, 277, 233, 220, 247],
+        rhythm: [1, 0.75, 0.25, 1, 0.5, 0.5, 1, 0.75]
+      },
+      snowy: {
+        name: "Winter Drive",
+        bpm: 90,
+        scale: [440, 466, 493, 523, 554, 587, 622, 659], // Minor scale
+        pattern: [0, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7],
+        bass: [220, 247, 220, 262, 233, 277, 247, 220],
+        rhythm: [1.5, 0.5, 1, 1, 0.5, 0.5, 1, 1.5]
+      },
+      spring: {
+        name: "Nature Cruise",
+        bpm: 110,
+        scale: [440, 494, 523, 587, 659, 698, 784, 880], // Happy major
+        pattern: [0, 4, 2, 6, 4, 7, 5, 3, 1, 5, 3, 7],
+        bass: [220, 277, 247, 330, 277, 220, 294, 247],
+        rhythm: [0.5, 0.5, 1, 0.5, 0.5, 1, 0.75, 0.25]
+      }
+    };
+    
+    return themes[theme] || themes.normal;
+  }
+
+  startMusic(theme = 'normal') {
+    if (!this.audioContext || this.isPlaying) return;
+    
+    this.currentTheme = theme;
+    this.isPlaying = true;
+    
+    const music = this.getThemeMusic(theme);
+    const beatDuration = 60 / music.bpm; // Saniye cinsinden beat süresi
+    
+    let noteIndex = 0;
+    let bassIndex = 0;
+    
+    // Ana melodi ve bas döngüsü
+    this.intervalId = setInterval(() => {
+      if (this.isMuted || !this.isPlaying) return;
+      
+      // Ana melodi notası
+      this.playNote(
+        music.scale[music.pattern[noteIndex]], 
+        beatDuration * music.rhythm[noteIndex % music.rhythm.length], 
+        0.15, 
+        'sine'
+      );
+      
+      // Bas notası (her 2 beatte bir)
+      if (noteIndex % 2 === 0) {
+        this.playNote(
+          music.bass[bassIndex], 
+          beatDuration * 2, 
+          0.08, 
+          'sawtooth'
+        );
+        bassIndex = (bassIndex + 1) % music.bass.length;
+      }
+      
+      // Perküsyon (her 4 beatte bir)
+      if (noteIndex % 4 === 0) {
+        this.playDrum();
+      }
+      
+      noteIndex = (noteIndex + 1) % music.pattern.length;
+      
+    }, beatDuration * 500); // Her yarım beatte çal
+    
+    console.log(`🎵 "${music.name}" çalmaya başladı!`);
+  }
+
+  playNote(frequency, duration, volume, waveType = 'sine') {
+    if (!this.audioContext || this.isMuted) return;
+    
+    const oscillator = this.audioContext.createOscillator();
+    const gainNode = this.audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(this.masterGainNode);
+    
+    oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+    oscillator.type = waveType;
+    
+    // ADSR envelope (Attack, Decay, Sustain, Release)
+    gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(volume, this.audioContext.currentTime + 0.02); // Attack
+    gainNode.gain.exponentialRampToValueAtTime(volume * 0.8, this.audioContext.currentTime + 0.1); // Decay
+    gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + duration); // Release
+    
+    oscillator.start(this.audioContext.currentTime);
+    oscillator.stop(this.audioContext.currentTime + duration);
+    
+    this.oscillators.push(oscillator);
+    
+    // Oscillatoru listeden temizle
+    oscillator.onended = () => {
+      const index = this.oscillators.indexOf(oscillator);
+      if (index > -1) {
+        this.oscillators.splice(index, 1);
+      }
+    };
+  }
+
+  playDrum() {
+    if (!this.audioContext || this.isMuted) return;
+    
+    // Basit kick drum sesi
+    const oscillator = this.audioContext.createOscillator();
+    const gainNode = this.audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(this.masterGainNode);
+    
+    oscillator.frequency.setValueAtTime(60, this.audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(20, this.audioContext.currentTime + 0.1);
+    oscillator.type = 'triangle';
+    
+    gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.2);
+    
+    oscillator.start(this.audioContext.currentTime);
+    oscillator.stop(this.audioContext.currentTime + 0.2);
+  }
+
+  stopMusic() {
+    this.isPlaying = false;
+    
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    
+    // Aktif oscillatörleri durdur
+    this.oscillators.forEach(osc => {
+      try {
+        osc.stop();
+      } catch (e) {
+        // Zaten durmuş olabilir
+      }
+    });
+    this.oscillators = [];
+    
+    console.log("🎵 Müzik durdu");
+  }
+
+  changeTheme(newTheme) {
+    if (this.currentTheme === newTheme) return;
+    
+    console.log(`🎵 Tema değişiyor: ${this.currentTheme} → ${newTheme}`);
+    
+    // Eski müziği durdur
+    this.stopMusic();
+    
+    // Kısa bir pause sonra yeni tema müziğini başlat
+    setTimeout(() => {
+      this.startMusic(newTheme);
+    }, 500);
+  }
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    
+    if (this.masterGainNode) {
+      this.masterGainNode.gain.setValueAtTime(
+        this.isMuted ? 0 : this.volume, 
+        this.audioContext.currentTime
+      );
+    }
+    
+    return this.isMuted;
+  }
+
+  setVolume(volume) {
+    this.volume = Math.max(0, Math.min(1, volume));
+    if (this.masterGainNode && !this.isMuted) {
+      this.masterGainNode.gain.setValueAtTime(this.volume, this.audioContext.currentTime);
+    }
+  }
+}
+
+// Global müzik sistemi
+let musicSystem = new GameMusicSystem();
 
 // Harita değişimi için bildirim
 function showMapChangeNotification(mapType) {
@@ -110,99 +319,77 @@ function showMapChangeNotification(mapType) {
   // 3 saniye sonra bildirim kaybolsun
   setTimeout(() => {
     notification.style.display = 'none';
-  }, 300);
-}
-
-// Geçerli harita indeksi
-let currentMapIndex = 0;
-let scene, camera, renderer;
-let carPosition = 1; // 0 = en sol şerit, 3 = en sağ şerit (toplam 4 şerit)
-let carTargetX = getXFromLane(carPosition); 
-let carZ = 0; // Arabanın Z pozisyonu (ileri hareket)
-let initialCarSpeed = 0.1; // Başlangıç hızı
-let carSpeed = initialCarSpeed; // Arabanın ileri hareket hızı
-let obstacles = [];
-let gameActive = true;
-let score = 0;
-let cameraHeight = 2.0;
-let cameraDistance = 8.0;
-let loadedStreetlightModel = null;
-let nitroActive = false;
-let nitroTimer = 0;
-let brakeActive = false;
-let nitroGlow, nitroLeft, nitroRight;
-// Mevcut nitro değişkenlerinin yanına ekleyin:
-let nitroLights = [];
-let carHeadlights = [];
-
-
-// 3D Modeller
-let carModel = null;
-let roadSegments = [];
-let obstacleModels = [];
-
-// GLB Loader
-const loader = new THREE.GLTFLoader();
-
-// Sahne nesneleri
-let playerCar = null;
-let roadGroup = null;
-
-async function loadStreetlightModel() {
-    return new Promise((resolve, reject) => {
-        loader.load(
-            'graphics_three/assets/free_streetlight.glb',
-            gltf => {
-                loadedStreetlightModel = gltf.scene;
-                resolve();
-            },
-            undefined,
-            reject
-        );
-    });
+  }, 3000); // 300'den 3000'e değiştirdim
 }
 
 // Oyunu başlat
 async function init() {
-    scene = new THREE.Scene();
-    const canvas = document.getElementById('gameCanvas');
-    await loadCarModel();
-    await loadObstacleModels();
-    createObstacles();
+  const canvas = document.getElementById('gameCanvas');
+  
+  // Three.js sahne kurulumu
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
+  
+  // Kamera
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(MAP_TYPES[0].skyColor); // İlk harita tipi için gökyüzü rengi
+  
+  // 🎵 Müzik sistemini başlat
+  const musicReady = await musicSystem.init();
+  if (musicReady) {
+    // Oyun başlar başlamaz müzik çalmaya başla
+    musicSystem.startMusic('normal');
+  }
+  
+  // Işıklar
+  setupLighting();
+  
+  // Pencere boyut değişikliği
+  window.addEventListener('resize', onWindowResize);
+  
+  // Kontroller
+  document.addEventListener('keydown', handleKeyPress);
+  
+  // Müzik kontrol butonları
+  setupMusicControls();
+  
+  // İlk haritayı oluştur (normal)
+  createRoad(MAP_TYPES[0]);
+  
+  // Araba modelini yükle
+  await loadCarModel();
+  
+  // Engelleri oluştur
+  createObstacles();
+  
+  // Oyun döngüsünü başlat
+  gameLoop();
+}
 
-    // Three.js sahne kurulumu
-    scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
+// Müzik kontrol butonlarını ayarla
+function setupMusicControls() {
+  // Mute/Unmute button
+  const muteButton = document.getElementById('muteButton');
+  if (muteButton) {
+    muteButton.addEventListener('click', () => {
+      const isMuted = musicSystem.toggleMute();
+      muteButton.textContent = isMuted ? '🔇 SES' : '🔊 SES';
+    });
+  }
   
-    // Kamera
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setClearColor(MAP_TYPES[0].skyColor); // İlk harita tipi için gökyüzü rengi
-  
-    // Işıklar
-    setupLighting();
-   await loadStreetlightModel();
-    // Pencere boyut değişikliği
-    window.addEventListener('resize', onWindowResize);
-  
-    // Kontroller
-    document.addEventListener('keydown', handleKeyPress);
-  
-    // İlk haritayı oluştur (normal)
-    createRoad(MAP_TYPES[0]);
-  
-    // Araba modelini yükle
-    await loadCarModel();
-  
-    // Engelleri oluştur
-    createObstacles();
-  
-    // Oyun döngüsünü başlat
-    gameLoop();
+  // Volume control (opsiyonel)
+  const volumeSlider = document.getElementById('volumeSlider');
+  if (volumeSlider) {
+    volumeSlider.addEventListener('input', (e) => {
+      musicSystem.setVolume(e.target.value / 100);
+    });
+  }
 }
 
 function setupLighting() {
@@ -221,27 +408,21 @@ function setupLighting() {
     scene.add(directionalLight);
     
     // Ortam ışığı
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     scene.add(ambientLight);
     
     // Kamera ışığı (arabayı aydınlatmak için)
     const cameraLight = new THREE.SpotLight(0xffffff, 0.5);
     cameraLight.position.set(0, 10, 0);
     scene.add(cameraLight);
-    const spotLight = new THREE.SpotLight(0xffffff, 1.5);
-    spotLight.position.set(0, 30, 0);
-    spotLight.angle = Math.PI / 3;
-    spotLight.penumbra = 0.5;
-    spotLight.castShadow = true;
-    scene.add(spotLight);
 }
 
 async function loadCarModel() {
     try {
-        
+        // Hudson Hornet modelini yükle
         const gltf = await new Promise((resolve, reject) => {
             loader.load(
-                'graphics_three/assets/lightning_mcqueen_cars_3.glb',
+                'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
                 resolve,
                 undefined,
                 reject
@@ -267,96 +448,8 @@ async function loadCarModel() {
         playerCar = carModel.clone();
         playerCar.position.set(getXFromLane(carPosition), 0.2, carZ);
         scene.add(playerCar);
-        // Nitro efekti ekle (arka tampon hizasına)// Nitro efekti ekle (arka tampon hizasına)
-const nitroTexture = new THREE.TextureLoader().load('graphics_three/assets/png-transparent-red-glow-red-glow-flash-light-thumbnail.png');
-const nitroMaterial = new THREE.SpriteMaterial({ 
-    map: nitroTexture, 
-    color: 0xffffff, 
-    transparent: true, 
-    opacity: 0.7, 
-    depthWrite: false 
-});
-window.nitroSpriteLeft = new THREE.Sprite(nitroMaterial); // global erişim için window. ile
-window.nitroSpriteRight = new THREE.Sprite(nitroMaterial);
-
-nitroSpriteLeft.position.set(-0.19, 0.22, -1.07);
-nitroSpriteRight.position.set(0.19, 0.22, -1.07);
-nitroSpriteLeft.scale.set(0.5, 0.5, 1);
-nitroSpriteRight.scale.set(0.5, 0.5, 1);
-
-playerCar.add(nitroSpriteLeft);
-playerCar.add(nitroSpriteRight);
-
-nitroSpriteLeft.visible = false;
-nitroSpriteRight.visible = false;
-        nitroGlow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12, 16, 8),
-    new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
-);
-nitroGlow.position.set(0, 0.22, -2.05);
-playerCar.add(nitroGlow);
-
-nitroLeft = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12, 16, 8),
-    new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
-);
-nitroLeft.position.set(-0.18, 0.22, -1.05);
-playerCar.add(nitroLeft);
-
-nitroRight = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12, 16, 8),
-    new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
-);
-nitroRight.position.set(0.18, 0.22, -1.05);
-playerCar.add(nitroRight);
-// Mevcut nitro sprite kodlarının sonrasına ekleyin:
-
-// Araba farları oluştur
-const headlightLeft = new THREE.SpotLight(0xffffff, 1, 30, Math.PI / 6, 0.5);
-headlightLeft.position.set(-0.5, 0.5, 1.5);
-headlightLeft.target.position.set(-1, 0, 5);
-headlightLeft.castShadow = true;
-playerCar.add(headlightLeft);
-playerCar.add(headlightLeft.target);
-
-const headlightRight = new THREE.SpotLight(0xffffff, 1, 30, Math.PI / 6, 0.5);
-headlightRight.position.set(0.5, 0.5, 1.5);
-headlightRight.target.position.set(1, 0, 5);
-headlightRight.castShadow = true;
-playerCar.add(headlightRight);
-playerCar.add(headlightRight.target);
-
-carHeadlights.push(headlightLeft, headlightRight);
-
-// Nitro ışıkları oluştur
-const nitroLightLeft = new THREE.PointLight(0xff4400, 0, 8);
-nitroLightLeft.position.set(-0.18, 0.22, -1.05);
-playerCar.add(nitroLightLeft);
-
-const nitroLightRight = new THREE.PointLight(0xff4400, 0, 8);
-nitroLightRight.position.set(0.18, 0.22, -1.05);
-playerCar.add(nitroLightRight);
-
-nitroLights.push(nitroLightLeft, nitroLightRight);
-
-nitroGlow.visible = false;
-nitroLeft.visible = false;
-nitroRight.visible = false;
-// --- Arka far PointLight'ları (KIRMIZI) ---
-const nitroTailLightLeft = new THREE.PointLight(0xff0000, 0, 5);
-nitroTailLightLeft.position.set(-0.32, 0.28, -1.12); // Sol arka far
-playerCar.add(nitroTailLightLeft);
-
-const nitroTailLightRight = new THREE.PointLight(0xff0000, 0, 5);
-nitroTailLightRight.position.set(0.32, 0.28, -1.12); // Sağ arka far
-playerCar.add(nitroTailLightRight);
-
-// Tüm nitro ışıklarını diziye ekle
-nitroLights.push(nitroLightLeft, nitroLightRight, nitroTailLightLeft, nitroTailLightRight);
-
-
         
-        console.log('mcquen modeli başarıyla yüklendi!');
+        console.log('Hudson Hornet modeli başarıyla yüklendi!');
         
     } catch (error) {
         console.warn('GLB model yüklenemedi, fallback küp kullanılıyor:', error);
@@ -472,55 +565,6 @@ function createRoad(mapType = MAP_TYPES[0]) {
   // Gökyüzü ve sis renklerini güncelle
   renderer.setClearColor(mapType.skyColor);
   scene.fog = new THREE.FogExp2(mapType.fogColor, 0.01);
-  // Streetlightları yolun kenarlarına ekle (her 20 metrede bir)
-if (loadedStreetlightModel) {
-  const lampSpacing = 75; // Lambalar arası mesafe (daha büyük = daha az lamba)
-  const lightCount = Math.floor((ROAD_LENGTH * 4) / lampSpacing);
-
-  for (let i = 0; i < lightCount; i++) {
-    [-1, 1].forEach(side => {
-      const lightObj = loadedStreetlightModel.clone();
-
-      // Pozisyon ayarı (yoldan biraz uzakta)
-      lightObj.position.set(
-        side * (ROAD_WIDTH / 2 - 0.7),
-        3.5,
-        i * lampSpacing - 20 // -20 offset, gerekirse değiştir
-      );
-      lightObj.scale.set(1.1, 1.1, 1.1);
-      if (side === -1) {
-        lightObj.rotation.y = Math.PI;
-      }
-
-      // Mesh gölge ayarı (Modelin bütün meshlerine uygula!)
-      lightObj.traverse(child => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-
-      // Gerçek ışık ekle (lambanın üstüne)
-      const pointLight = new THREE.PointLight(0xfff8e7, 0.8, 15, 2);
-      pointLight.position.set(0, 5.5, 0); // Model yüksekliğine göre ayarla
-      pointLight.castShadow = false; // Performans için kapalı
-      lightObj.add(pointLight);
-
-      // Dekoratif "yanıyor" efekti için küçük parlak küre (ekstra FPS için kullanılabilir)
-      /*
-      const bulb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.2, 8, 8),
-        new THREE.MeshBasicMaterial({ color: 0xfff8e7 })
-      );
-      bulb.position.set(0, 5.5, 0);
-      lightObj.add(bulb);
-      */
-
-      roadGroup.add(lightObj);
-    });
-  }
-}
-
 }
 
 function updateRoad() {
@@ -549,7 +593,7 @@ function updateRoad() {
   }
 }
 
-// Harita tipine göre dekorasyon ekleme
+// Harita tipine göre dekorasyon ekleme - TEK FONKSIYON KALDI
 function addMapDecorations(mapType) {
   switch(mapType.name) {
     case "Çöl":
@@ -610,42 +654,42 @@ function addMapDecorations(mapType) {
       break;
   }
 }
-function createObstacles() {
-    // Tüm eski engelleri temizle!
-    obstacles.forEach(obstacle => scene.remove(obstacle));
-    obstacles = [];
 
-    const obstacleCount = 30;
+function createObstacles() {
+    obstacles = [];
+    const obstacleCount = 50;
+    
+    // Engel geometrileri
+    const obstacleGeometries = [
+        new THREE.BoxGeometry(0.8, 0.8, 0.8),    // Küp
+        new THREE.ConeGeometry(0.4, 1.2, 8),     // Koni
+        new THREE.SphereGeometry(0.5, 8, 6)      // Küre
+    ];
+    
+    const obstacleColors = [0x0066ff, 0xff6600, 0xffff00];
+    
     for (let i = 0; i < obstacleCount; i++) {
         const lane = Math.floor(Math.random() * 4);
         const z = (i + 3) * 6 + Math.random() * 3;
-
-        if (loadedObstacleModels.length === 0) continue;
-        const modelIdx = Math.floor(Math.random() * loadedObstacleModels.length);
-        const glbModel = loadedObstacleModels[modelIdx];
-        if (!glbModel) continue;
-
-        const obstacle = glbModel.clone();
-        obstacle.position.set(getXFromLane(lane), 0.2, z);
+        const obstacleType = Math.floor(Math.random() * 3);
+        
+        const material = new THREE.MeshLambertMaterial({ color: obstacleColors[obstacleType] });
+        const obstacle = new THREE.Mesh(obstacleGeometries[obstacleType], material);
+        
+        obstacle.position.set(getXFromLane(lane), 0.5, z);
         obstacle.castShadow = true;
-
+        
         obstacle.userData = {
             lane: lane,
             z: z,
-            originalY: obstacle.position.y,
-            isGLBModel: true,
-            npcSpeed: 0.05 + Math.random() * 0.1, // daima >0!
-            direction: 1, // sadece ileri
-            laneChangeTimer: 0,
-            laneChangeDelay: Math.random() * 500 + 500,
-            targetLane: lane
+            type: obstacleType,
+            originalY: 0.5
         };
-
+        
         obstacles.push(obstacle);
         scene.add(obstacle);
     }
 }
-
 
 function getXFromLane(lane) {
     // Lane: 0=en sol, 3=en sağ şerit
@@ -683,64 +727,32 @@ function handleKeyPress(event) {
         restartGame();
         return;
     }
-
+    
     if (!gameActive) return;
-
+    
     switch(event.code) {
         case 'ArrowLeft':
             if (carPosition > 0) {
                 carPosition--;
-                carTargetX = getXFromLane(carPosition); 
+                updateCarPosition();
             }
             break;
         case 'ArrowRight':
             if (carPosition < 3) {
                 carPosition++;
-                carTargetX = getXFromLane(carPosition); 
+                updateCarPosition();
             }
             break;
-        // NİTRO: Shift tuşuna basınca nitro aç
-        case 'ShiftLeft':
-        case 'ShiftRight':
-        case 'KeyN': // Alternatif olarak N harfi de kullanılabilir
-            nitroActive = true;
-            break;
-        // FREN: Control tuşuna basınca fren yap
-        case 'ControlLeft':
-        case 'ControlRight':
-        case 'KeyB': // Alternatif olarak B harfi de kullanılabilir
-            brakeActive = true;
-            break;
     }
 }
-
-// Tuş bırakıldığında nitro veya fren devre dışı
-function handleKeyUp(event) {
-    switch(event.code) {
-        case 'ShiftLeft':
-        case 'ShiftRight':
-        case 'KeyN':
-            nitroActive = false;
-            break;
-        case 'ControlLeft':
-        case 'ControlRight':
-        case 'KeyB':
-            brakeActive = false;
-            break;
-    }
-}
-document.addEventListener('keyup', handleKeyUp);
-
 
 function updateCarPosition() {
     if (playerCar) {
-        const difference = carTargetX - playerCar.position.x;
-        // Araba neredeyse hedefteyse tam yerine koy
-        if (Math.abs(difference) < 0.01) {
-            playerCar.position.x = carTargetX;
-        } else {
-            playerCar.position.x += difference * 0.15; // 0.3 -> 0.15 ile daha yavaş ve smooth olur
-        }
+        const targetX = getXFromLane(carPosition);
+        // Yumuşak geçiş için tween benzeri hareket
+        const currentX = playerCar.position.x;
+        const difference = targetX - currentX;
+        playerCar.position.x += difference * 0.3;
     }
 }
 
@@ -749,399 +761,136 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
     return;
   }
-
-  // Standart hız artışı
+  
+  // Hızı artır
   const MAX_SPEED = 0.3;
-  let targetSpeed = initialCarSpeed + Math.floor(score / 1000) * 0.000001;
-  targetSpeed = Math.min(targetSpeed, MAX_SPEED);
-  if (brakeActive) targetSpeed -= 0.07;
-  // Nitro aktifse hızı artır
- 
-if (nitroActive) {
-    nitroSpriteLeft.visible = true;
-    nitroSpriteRight.visible = true;
-    if (nitroGlow && nitroLeft && nitroRight) {
-        nitroGlow.visible = true;
-        nitroLeft.visible = true;
-        nitroRight.visible = true;
-    }
-    const time = Date.now() * 0.01;
-    if (nitroLeft && nitroRight && nitroGlow) {
-        nitroLeft.material.opacity = 0.5 + Math.sin(time) * 0.2;
-        nitroRight.material.opacity = 0.5 + Math.sin(time + 1) * 0.2;
-        nitroGlow.material.opacity = 0.3 + Math.sin(time * 1.5) * 0.2;
-    }
-    
-    // Nitro ışıklarını aç
-    nitroLights.forEach(light => {
-        light.intensity = 2 + Math.random() * 0.5; // Titreyen efekt
-    });
-    
-    // ARABA FARLARINI DA PARLAT (YENİ EKLENDİ!)
-    carHeadlights.forEach(headlight => {
-        headlight.intensity = 2 + Math.random() * 0.3; // Normal 1'den 2'ye çıkar
-        headlight.color.setHex(0xaaffff); // Mavi-beyaz nitro rengi
-    });
-    
-    targetSpeed += 0.18;
-} else {
-    nitroSpriteLeft.visible = false;
-    nitroSpriteRight.visible = false;
-    if (nitroGlow && nitroLeft && nitroRight) {
-        nitroGlow.visible = false;
-        nitroLeft.visible = false;
-        nitroRight.visible = false;
-    }
-    
-    // Nitro ışıklarını kapat
-    nitroLights.forEach(light => {
-        light.intensity = 0;
-    });
-    
-    // ARABA FARLARINI NORMALE DÖNDür (YENİ EKLENDİ!)
-    carHeadlights.forEach(headlight => {
-        headlight.intensity = 1; // Normal parlaklığa dön
-        headlight.color.setHex(0xffffff); // Normal beyaz renk
-    });
-}
-
-  // Sınırları koru
-  carSpeed = Math.max(0.05, Math.min(targetSpeed, 0.6));
-
+  carSpeed = initialCarSpeed + Math.floor(score / 1000) * 0.000001;
+  carSpeed = Math.min(carSpeed, MAX_SPEED);
+  
   document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
-
-  // Harita değişimi kontrolü (her 5000 puanda bir)
+  
+  // Harita değişimi kontrolü (her 5.000 puanda bir)
   const mapIndex = Math.floor(score / 5000) % MAP_TYPES.length;
   if (mapIndex !== currentMapIndex) {
     currentMapIndex = mapIndex;
-    createRoad(MAP_TYPES[currentMapIndex]);
-    showMapChangeNotification(MAP_TYPES[currentMapIndex]);
+    const newTheme = MAP_TYPES[currentMapIndex];
+    
+    createRoad(newTheme);
+    showMapChangeNotification(newTheme);
+    
+    // 🎵 Müzik temasını değiştir
+    const musicThemes = ['normal', 'desert', 'snowy', 'spring'];
+    musicSystem.changeTheme(musicThemes[currentMapIndex]);
   }
-
+  
   displayDebugInfo();
-
+  
   // Araba ileri hareket
   carZ += carSpeed;
-
+  
   // Araba pozisyonunu güncelle
   if (playerCar) {
     playerCar.position.z = carZ;
     updateCarPosition();
-
+    
     // Araba animasyonu (hafif sallanma)
     playerCar.rotation.z = Math.sin(Date.now() * 0.01) * 0.02;
   }
-
+  
   // Kamerayı güncelle
   const carX = getXFromLane(carPosition);
   camera.position.set(carX, cameraHeight, carZ - cameraDistance);
   camera.lookAt(carX, 0, carZ + 5);
-
+  
   // Yolu hareket ettir
-  if (roadGroup) {
-    roadGroup.position.z = -carZ;
-  }
   updateRoad();
-
+  
   // Engelleri güncelle ve kontrol et
   updateObstacles();
-
+  
   // Puanı güncelle
   score += carSpeed * 100;
   document.getElementById('score').textContent = Math.floor(score);
-
+  
   // Render
   renderer.render(scene, camera);
   requestAnimationFrame(gameLoop);
 }
 
 function updateObstacles() {
+  const carX = getXFromLane(carPosition);
+  
   for (const obstacle of obstacles) {
-    // Sadece GLB (NPC) arabalar için hareket ve şerit değişimi
-    if (obstacle.userData.isGLBModel) {
-      // 1. Duran NPC'leri tespit et ve hız ekle
-      if (obstacle.userData.npcSpeed < 0.01) {
-        obstacle.userData.npcSpeed = 0.08 + Math.random() * 0.08;
+    // Engel animasyonu
+    obstacle.position.y = obstacle.userData.originalY + Math.sin(Date.now() * 0.005 + obstacle.userData.z) * 0.1;
+    obstacle.rotation.y += 0.02;
+    
+    // Çarpışma kontrolü
+    if (obstacle.userData.lane === carPosition) {
+      const distance = Math.abs(obstacle.userData.z - carZ);
+      if (distance < 1.8) {
+        gameOver();
+        return;
       }
-      // 2. İleri hareket
-      obstacle.userData.z += obstacle.userData.npcSpeed * obstacle.userData.direction;
-
-      // 3. Şerit değiştirme sistemi (SADECE 1 şerit sağ/sol!)
-      obstacle.userData.laneChangeTimer++;
-      if (obstacle.userData.laneChangeTimer >= obstacle.userData.laneChangeDelay) {
-        const currentLane = obstacle.userData.lane;
-        let candidateLanes = [];
-        if (currentLane > 0) candidateLanes.push(currentLane - 1);
-        if (currentLane < 3) candidateLanes.push(currentLane + 1);
-
-        // Rastgele komşu şeritlerden birini seç
-        const newLane = candidateLanes[Math.floor(Math.random() * candidateLanes.length)];
-        obstacle.userData.targetLane = newLane;
-
-        obstacle.userData.laneChangeTimer = 0;
-        obstacle.userData.laneChangeDelay = Math.random() * 300 + 150;
-      }
-
-      // 4. Yumuşak şerit değişimi
-      const targetX = getXFromLane(obstacle.userData.targetLane);
-      if (Math.abs(obstacle.position.x - targetX) > 0.1) {
-        obstacle.position.x += (targetX - obstacle.position.x) * 0.04;
-      } else {
-        obstacle.position.x = targetX;
-        obstacle.userData.lane = obstacle.userData.targetLane;
-      }
-
-      // 5. Hafif sallanma efekti
-      obstacle.position.y = obstacle.userData.originalY +
-        Math.sin(Date.now() * 0.003 + obstacle.userData.z) * 0.02;
-    } else {
-      // Fallback engeller için animasyon
-      obstacle.position.y = obstacle.userData.originalY +
-        Math.sin(Date.now() * 0.005 + obstacle.userData.z) * 0.1;
-      obstacle.rotation.y += 0.02;
     }
-
-    // Pozisyonları güncelle
-    obstacle.position.z = obstacle.userData.z;
-
-    // --- Çarpışma kontrolü ---
-    const playerBox = new THREE.Box3().setFromObject(playerCar);
-    const obstacleBox = new THREE.Box3().setFromObject(obstacle);
-    if (playerBox.intersectsBox(obstacleBox)) {
-      gameOver();
-      return;
-    }
-
-    // --- NPC sınır kontrolleri ve yeniden doğurma ---
-    // Çok geride kalanları ileri taşı
-    if (obstacle.userData.z < carZ - 30) {
-      obstacle.userData.z = carZ + 80 + Math.random() * 40;
-      let newLane = Math.floor(Math.random() * 4);
-      obstacle.userData.lane = newLane;
-      obstacle.userData.targetLane = newLane;
-      obstacle.position.x = getXFromLane(newLane);
-      obstacle.userData.npcSpeed = 0.07 + Math.random() * 0.08;
-      obstacle.userData.direction = 1; // Hep ileri
-      obstacle.userData.laneChangeDelay = Math.random() * 300 + 150;
-    }
-    // Çok ilerde olanları geri taşı
-    if (obstacle.userData.z > carZ + 120) {
-      obstacle.userData.z = carZ - 20 + Math.random() * 15;
-      let newLane = Math.floor(Math.random() * 4);
-      obstacle.userData.lane = newLane;
-      obstacle.userData.targetLane = newLane;
-      obstacle.position.x = getXFromLane(newLane);
+    
+    // Geçilen engelleri yeniden konumlandır
+    if (obstacle.userData.z < carZ - 20) {
+      // Daha ileride yeniden konumlandır (100-160 birim arasında)
+      obstacle.userData.z = carZ + 100 + Math.random() * 60;
+      obstacle.userData.lane = Math.floor(Math.random() * 4);
+      obstacle.position.set(getXFromLane(obstacle.userData.lane), obstacle.userData.originalY, obstacle.userData.z);
     }
   }
 }
 
-
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
 
 function gameOver() {
- gameActive = false;
- 
- // Game Over ekranını göster
- let gameOverDiv = document.getElementById('gameOver');
- if (!gameOverDiv) {
-   gameOverDiv = document.createElement('div');
-   gameOverDiv.id = 'gameOver';
-   gameOverDiv.style.position = 'absolute';
-   gameOverDiv.style.top = '50%';
-   gameOverDiv.style.left = '50%';
-   gameOverDiv.style.transform = 'translate(-50%, -50%)';
-   gameOverDiv.style.background = 'rgba(255, 0, 0, 0.9)';
-   gameOverDiv.style.color = '#FFFFFF';
-   gameOverDiv.style.padding = '40px';
-   gameOverDiv.style.borderRadius = '15px';
-   gameOverDiv.style.fontSize = '32px';
-   gameOverDiv.style.textAlign = 'center';
-   gameOverDiv.style.zIndex = '1000';
-   gameOverDiv.style.border = '3px solid #FF0000';
-   gameOverDiv.style.boxShadow = '0 0 30px rgba(255, 0, 0, 0.7)';
-   document.body.appendChild(gameOverDiv);
- }
- 
- gameOverDiv.innerHTML = `
-   <h2>OYUN BİTTİ!</h2>
-   <p>Final Puanınız: ${Math.floor(score)}</p>
-   <p>Ulaştığınız Harita: ${MAP_TYPES[currentMapIndex].name}</p>
-   <p style="font-size: 18px; margin-top: 20px;">Tekrar oynamak için SPACE tuşuna basın</p>
- `;
- gameOverDiv.style.display = 'block';
+    gameActive = false;
+    
+    // 🎵 Müziği durdur
+    musicSystem.stopMusic();
+    
+    document.getElementById('finalScore').textContent = Math.floor(score);
+    document.getElementById('gameOver').style.display = 'block';
 }
 
 function restartGame() {
- // Game Over ekranını gizle
- const gameOverDiv = document.getElementById('gameOver');
- if (gameOverDiv) {
-   gameOverDiv.style.display = 'none';
- }
- 
- // Oyun değişkenlerini sıfırla
- gameActive = true;
- score = 0;
- carPosition = 1;
- carTargetX = getXFromLane(carPosition);
- carZ = 0;
- carSpeed = initialCarSpeed;
- currentMapIndex = 0;
- 
- // Arabayı yeniden konumlandır
- if (playerCar) {
-   playerCar.position.set(getXFromLane(carPosition), 0.2, carZ);
-   playerCar.rotation.set(0, 0, 0);
- }
- 
- // Engelleri yeniden oluştur
- obstacles.forEach(obstacle => {
-   scene.remove(obstacle);
- });
- createObstacles();
- 
- // İlk haritayı yeniden oluştur
- createRoad(MAP_TYPES[0]);
- nitroLights.forEach(light => {
-    light.intensity = 0;
-});
- 
- console.log('Oyun yeniden başlatıldı!');
-
+  gameActive = true;
+  score = 0;
+  carPosition = 1;
+  carZ = 0;
+  carSpeed = initialCarSpeed;
+  currentMapIndex = 0; // Harita indeksini sıfırla
+  
+  // 🎵 Müziği yeniden başlat
+  musicSystem.startMusic('normal');
+  
+  // Haritayı varsayılana sıfırla
+  createRoad(MAP_TYPES[0]);
+  
+  // Engelleri sıfırla
+  obstacles.forEach(obstacle => {
+    scene.remove(obstacle);
+  });
+  createObstacles();
+  
+  // Araba pozisyonunu sıfırla
+  if (playerCar) {
+    playerCar.position.set(getXFromLane(carPosition), 0.2, carZ);
+    playerCar.rotation.set(0, 0, 0); // Math.PI kaldırıldı
+  }
+  
+  // UI'yi güncelle
+  document.getElementById('score').textContent = '0';
+  document.getElementById('speedValue').textContent = Math.floor(initialCarSpeed * 1000);
+  document.getElementById('gameOver').style.display = 'none';
 }
 
-function onWindowResize() {
- camera.aspect = window.innerWidth / window.innerHeight;
- camera.updateProjectionMatrix();
- renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-// HTML elementi oluşturma
-function createGameUI() {
- // Ana konteyner
- const uiContainer = document.createElement('div');
- uiContainer.style.position = 'absolute';
- uiContainer.style.top = '20px';
- uiContainer.style.left = '20px';
- uiContainer.style.zIndex = '100';
- uiContainer.style.fontFamily = 'Arial, sans-serif';
- uiContainer.style.color = '#FFFFFF';
- uiContainer.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
- 
- // Puan göstergesi
- const scoreDiv = document.createElement('div');
- scoreDiv.innerHTML = '<h3>Puan: <span id="score">0</span></h3>';
- uiContainer.appendChild(scoreDiv);
- 
- // Hız göstergesi
- const speedDiv = document.createElement('div');
- speedDiv.innerHTML = '<h3>Hız: <span id="speedValue">100</span> km/h</h3>';
- uiContainer.appendChild(speedDiv);
- 
- // Kontrol açıklaması
- const controlsDiv = document.createElement('div');
- controlsDiv.style.marginTop = '20px';
- controlsDiv.style.fontSize = '14px';
- controlsDiv.innerHTML = `
-   <p><strong>Kontroller:</strong></p>
-   <p>← Sol Şerit | → Sağ Şerit</p>
-   <p>Her 5000 puan = Yeni Harita!</p>
- `;
- uiContainer.appendChild(controlsDiv);
- 
- document.body.appendChild(uiContainer);
-}
-
-// Canvas oluştur
-function createCanvas() {
- const canvas = document.createElement('canvas');
- canvas.id = 'gameCanvas';
- canvas.style.display = 'block';
- canvas.style.margin = '0 auto';
- document.body.appendChild(canvas);
- return canvas;
-}
-
-// Sayfa yüklendiğinde oyunu başlat
-window.addEventListener('load', async () => {
- // Body stilini ayarla
- document.body.style.margin = '0';
- document.body.style.padding = '0';
- document.body.style.overflow = 'hidden';
- document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
- 
- // Canvas ve UI oluştur
- createCanvas();
- createGameUI();
- 
- // Oyunu başlat
- await init();
- 
- console.log('3D WebGL Araba Yarış Simülasyonu başlatıldı!');
- console.log('Kontroller: Sol/Sağ ok tuşları ile şerit değiştirin');
- console.log('Her 5000 puanda harita değişir!');
-});
-
-// Touch kontrolleri (mobil destek)
-let touchStartX = 0;
-
-document.addEventListener('touchstart', (e) => {
- touchStartX = e.touches[0].clientX;
-});
-
-document.addEventListener('touchend', (e) => {
- if (!gameActive) {
-   if (document.getElementById('gameOver') && document.getElementById('gameOver').style.display === 'block') {
-     restartGame();
-   }
-   return;
- }
- 
- const touchEndX = e.changedTouches[0].clientX;
- const diff = touchEndX - touchStartX;
- 
- if (Math.abs(diff) > 50) { // Minimum 50px kaydırma
-   if (diff > 0 && carPosition < 3) {
-     // Sağa kaydırma
-     carPosition++;
-     carTargetX = getXFromLane(carPosition);
-   } else if (diff < 0 && carPosition > 0) {
-     // Sola kaydırma
-     carPosition--;
-     carTargetX = getXFromLane(carPosition);
-   }
- }
-});
-
-// Performans optimizasyonu
-/*
-function optimizePerformance() {
- // Düşük FPS algılandığında grafik kalitesini düşür
- let lastTime = performance.now();
- let frameCount = 0;
- let fps = 60;
- 
- function measureFPS() {
-   frameCount++;
-   const currentTime = performance.now();
-   
-   if (currentTime - lastTime >= 1000) {
-     fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
-     frameCount = 0;
-     lastTime = currentTime;
-     
-     // Düşük FPS'de optimizasyon
-     if (fps < 30) {
-       renderer.setPixelRatio(Math.min(window.devicePixelRatio * 0.8, 1));
-       console.log('Performans optimizasyonu aktif - FPS:', fps);
-     } else if (fps > 50) {
-       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-     }
-   }
-   
-   requestAnimationFrame(measureFPS);
- }
- 
- measureFPS();
-}*/
-
-// Başlangıçta performans izlemeyi başlat
-//setTimeout(optimizePerformance, 2000);
+// Oyunu başlat
+window.onload = init;
