@@ -2,7 +2,7 @@
 
 //import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 //import { GLTFLoader } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/GLTFLoader.js';
-
+//versiyon13
 // Global değişkenler
 // Harita tipleri - en başta global değişkenlerle birlikte tanımlanacak
 
