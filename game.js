@@ -1027,62 +1027,71 @@ function createRoad(mapType = MAP_TYPES[0]) {
   const ROAD_WIDTH = 8;
   const ROAD_LENGTH = 200; // Daha uzun yol
 
-  // ÇÖL YOLU İÇİN GLB MODEL KONTROLÜ - YENİ EKLENDİ
-  if (mapType.name === "Çöl" && loadedRoadModels.desert) {
-    console.log('🏜️ Çöl yolu GLB modeli kullanılıyor...');
-    
-    // Çöl yolu segmentlerini GLB modeli ile oluştur
-    const segmentCount = Math.floor(ROAD_LENGTH / 4); // Her 4 birimde bir segment
-    
-    for (let i = -5; i < segmentCount; i++) {
-      const roadSegment = loadedRoadModels.desert.clone();
-      roadSegment.position.set(0, 0, i * 4);
-      roadSegment.scale.set(1, 1, 1);
-      
-      // Rastgele rotasyon ekle (çeşitlilik için)
-      if (Math.random() > 0.7) {
-        roadSegment.rotation.y = (Math.random() - 0.5) * 0.2; // Hafif rotasyon
-      }
-      
-      roadGroup.add(roadSegment);
-    }
-    
-    console.log(`✅ ${segmentCount} adet çöl yolu segmenti oluşturuldu`);
-    
+  // ÇÖL YOLU İÇİN ÖZEL MATERIAL VE RENK
+  console.log('🛣️ Geometrik yol oluşturuluyor...');
+  
+  // Ana yol segmentleri
+  let roadMaterial;
+  if (mapType.name === "Çöl") {
+    // Çöl haritası için özel kumlu sarımsı yol
+    roadMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0xD2B48C, // Kumlu sarımsı renk (tan)
+      roughness: 0.9   // Mat görünüm
+    });
   } else {
-    // Normal geometrik yol oluştur (diğer haritalar için)
-    console.log('🛣️ Geometrik yol oluşturuluyor...');
-    
-    // Ana yol segmentleri
-    const roadGeometry = new THREE.PlaneGeometry(ROAD_WIDTH, 4);
-    const roadMaterial = new THREE.MeshLambertMaterial({ color: mapType.roadColor });
+    // Diğer haritalar için normal renkli yol
+    roadMaterial = new THREE.MeshLambertMaterial({ color: mapType.roadColor });
+  }
+  
+  const roadGeometry = new THREE.PlaneGeometry(ROAD_WIDTH, 4);
 
-    // -20'den 180'e kadar (toplam 200 birim) yol segmentleri oluştur
-    for (let i = -20; i < ROAD_LENGTH; i++) {
-      const roadSegment = new THREE.Mesh(roadGeometry, roadMaterial);
-      roadSegment.rotation.x = -Math.PI / 2;
-      roadSegment.position.set(0, 0.01, i * 4);
-      roadSegment.receiveShadow = true;
-      roadGroup.add(roadSegment);
+  // -20'den 180'e kadar (toplam 200 birim) yol segmentleri oluştur
+  for (let i = -20; i < ROAD_LENGTH; i++) {
+    const roadSegment = new THREE.Mesh(roadGeometry, roadMaterial);
+    roadSegment.rotation.x = -Math.PI / 2;
+    roadSegment.position.set(0, 0.01, i * 4);
+    roadSegment.receiveShadow = true;
+    roadGroup.add(roadSegment);
 
-      // Şerit çizgileri (sadece çöl haritası değilse)
-      if (i % 2 === 0) {
-        for (let lane = 1; lane < 4; lane++) {
-          const lineGeo = new THREE.BoxGeometry(0.1, 0.01, 1.5);
-          const lineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-          const line = new THREE.Mesh(lineGeo, lineMat);
-          line.rotation.x = -Math.PI / 2;
-          // getXFromLane fonksiyonunu kullanarak şerit konumlarını belirle
-          line.position.set(getXFromLane(lane), 0.02, i * 4);
-          roadGroup.add(line);
+    // Şerit çizgileri - DÜZELTİLDİ (yatay çizgiler)
+            // Şerit çizgileri - DÜZELTİLDİ (YATAY ÇİZGİLER)
+     if (i % 2 === 0) {
+      for (let lane = 1; lane < 4; lane++) {
+        // Şerit çizgilerini YATAY (yol boyunca uzun) yapmak için boyutları doğru ayarla
+        // BoxGeometry(yol üzerindeki genişlik, yol üzerindeki uzunluk, dikey kalınlık)
+        const lineGeo = new THREE.BoxGeometry(0.1, 1.5, 0.01); // Genişlik: 0.1, Uzunluk: 1.5, Dikey Kalınlık: 0.01
+        
+        let lineMaterial;
+        if (mapType.name === "Çöl") {
+          // Çöl haritasında daha koyu şerit çizgileri
+          lineMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 }); // Koyu kahverengi
+        } else {
+          // Diğer haritalarda beyaz şerit çizgileri
+          lineMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
         }
+        
+        const line = new THREE.Mesh(lineGeo, lineMaterial);
+        line.rotation.x = -Math.PI / 2; // Yatay konuma getir (yola yapıştır)
+        line.position.set(getXFromLane(lane) - 1, 0.015, i * 4); // Şeritler arasına koy ve Y pozisyonunu ayarla (0.01 + 0.01/2)
+        roadGroup.add(line);
       }
     }
   }
 
-  // Çim kenarları (yolun her iki tarafında) - tüm haritalar için
+  // Çim kenarları (yolun her iki tarafında) - ÇÖL İÇİN ÖZEL RENK
   const grassGeo = new THREE.PlaneGeometry(100, 400);
-  const grassMat = new THREE.MeshLambertMaterial({ color: mapType.grassColor });
+  let grassMat;
+  
+  if (mapType.name === "Çöl") {
+    // Çöl haritası için kumlu zemin
+    grassMat = new THREE.MeshLambertMaterial({ 
+      color: 0xF4A460, // Sandy Brown - daha açık kum rengi
+      roughness: 0.8 
+    });
+  } else {
+    // Diğer haritalar için normal çim rengi
+    grassMat = new THREE.MeshLambertMaterial({ color: mapType.grassColor });
+  }
 
   const leftGrass = new THREE.Mesh(grassGeo, grassMat);
   leftGrass.rotation.x = -Math.PI / 2;
@@ -1119,44 +1128,43 @@ function createRoad(mapType = MAP_TYPES[0]) {
   createWeatherSystem(mapType);
   
   // Streetlightları yolun kenarlarına ekle (her 20 metrede bir)
-if (loadedStreetlightModel) {
-  const lampSpacing = 75; // Lambalar arası mesafe (daha büyük = daha az lamba)
-  const lightCount = Math.floor((ROAD_LENGTH * 4) / lampSpacing);
+  if (loadedStreetlightModel) {
+    const lampSpacing = 75; // Lambalar arası mesafe (daha büyük = daha az lamba)
+    const lightCount = Math.floor((ROAD_LENGTH * 4) / lampSpacing);
 
-  for (let i = 0; i < lightCount; i++) {
-    [-1, 1].forEach(side => {
-      const lightObj = loadedStreetlightModel.clone();
+    for (let i = 0; i < lightCount; i++) {
+      [-1, 1].forEach(side => {
+        const lightObj = loadedStreetlightModel.clone();
 
-      // Pozisyon ayarı (yoldan biraz uzakta)
-      lightObj.position.set(
-        side * (ROAD_WIDTH / 2 - 0.7),
-        3.5,
-        i * lampSpacing - 20 // -20 offset, gerekirse değiştir
-      );
-      lightObj.scale.set(1.1, 1.1, 1.1);
-      if (side === -1) {
-        lightObj.rotation.y = Math.PI;
-      }
-
-      // Mesh gölge ayarı (Modelin bütün meshlerine uygula!)
-      lightObj.traverse(child => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+        // Pozisyon ayarı (yoldan biraz uzakta)
+        lightObj.position.set(
+          side * (ROAD_WIDTH / 2 - 0.7),
+          3.5,
+          i * lampSpacing - 20 // -20 offset, gerekirse değiştir
+        );
+        lightObj.scale.set(1.1, 1.1, 1.1);
+        if (side === -1) {
+          lightObj.rotation.y = Math.PI;
         }
+
+        // Mesh gölge ayarı (Modelin bütün meshlerine uygula!)
+        lightObj.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        // Gerçek ışık ekle (lambanın üstüne) - gece modunda daha parlak
+        const pointLight = new THREE.PointLight(0xfff8e7, isNightMode ? 1.2 : 0.8, 15, 2);
+        pointLight.position.set(0, 5.5, 0); // Model yüksekliğine göre ayarla
+        pointLight.castShadow = false; // Performans için kapalı
+        lightObj.add(pointLight);
+
+        roadGroup.add(lightObj);
       });
-
-      // Gerçek ışık ekle (lambanın üstüne) - gece modunda daha parlak
-      const pointLight = new THREE.PointLight(0xfff8e7, isNightMode ? 1.2 : 0.8, 15, 2);
-      pointLight.position.set(0, 5.5, 0); // Model yüksekliğine göre ayarla
-      pointLight.castShadow = false; // Performans için kapalı
-      lightObj.add(pointLight);
-
-      roadGroup.add(lightObj);
-    });
+    }
   }
-}
-
 }
 
 function updateRoad() {
@@ -1251,7 +1259,7 @@ function createObstacles() {
     obstacles.forEach(obstacle => scene.remove(obstacle));
     obstacles = [];
 
-    const obstacleCount = 30;
+    const obstacleCount = 1;
     for (let i = 0; i < obstacleCount; i++) {
         const lane = Math.floor(Math.random() * 4);
         const z = (i + 3) * 6 + Math.random() * 3;
@@ -1775,7 +1783,6 @@ function restartGame() {
  }
  
  console.log('✅ Oyun yeniden başlatıldı! İlk harita ve müzik yüklendi.');
-
 }
 
 function onWindowResize() {
