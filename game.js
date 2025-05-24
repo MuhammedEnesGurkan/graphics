@@ -217,7 +217,10 @@ const AVAILABLE_CARS = [
     }
 ];
 
+// SORUN 1: Eksik değişken tanımlamaları - dosyanın başına ekleyin
+let selectedCar = null;
 let selectedCarIndex = 0;
+
 let gameStarted = false;
 
 // Kamera sistemi - genişletildi
@@ -741,23 +744,16 @@ function createDayNightSelectionMenu() {
 
 async function loadCarModel() {
     try {
-        const selectedCar = AVAILABLE_CARS[selectedCarIndex];
+        // Seçilen arabayı al
+        selectedCar = AVAILABLE_CARS[selectedCarIndex];
+        console.log(`🚗 ${selectedCar.name} modeli yükleniyor...`);
         
         const gltf = await new Promise((resolve, reject) => {
-            loader.load(
-                selectedCar.path,
-                resolve,
-                undefined,
-                reject
-            );
+            loader.load(selectedCar.path, resolve, undefined, reject);
         });
         
-        carModel = gltf.scene;
-        
-        // Modeli ölçekle ve konumlandır
+        carModel = gltf.scene.clone();
         carModel.scale.set(selectedCar.scale, selectedCar.scale, selectedCar.scale);
-        carModel.position.set(0, 0, 0);
-       // carModel.rotation.y = Math.PI; // Arabayı döndür (ileri baksın)
         
         // Gölge ayarları
         carModel.traverse((child) => {
@@ -781,7 +777,7 @@ async function loadCarModel() {
             opacity: 0.7, 
             depthWrite: false 
         });
-        window.nitroSpriteLeft = new THREE.Sprite(nitroMaterial); // global erişim için window. ile
+        window.nitroSpriteLeft = new THREE.Sprite(nitroMaterial);
         window.nitroSpriteRight = new THREE.Sprite(nitroMaterial);
 
         nitroSpriteLeft.position.set(-0.19, 0.22, -1.07);
@@ -816,34 +812,32 @@ async function loadCarModel() {
         nitroRight.position.set(0.18, 0.22, -1.05);
         playerCar.add(nitroRight);
 
-        // Araba farları oluştur - TAMAMEN İYİLEŞTİRİLDİ
+        // Araba farları oluştur
         const headlightLeft = new THREE.SpotLight(0xffffff, isNightMode ? 2.0 : 1.2, 15, Math.PI / 6, 0.4);
-        headlightLeft.position.set(-0.3, 0.5, 1.0); // Daha yüksek ve içerde
+        headlightLeft.position.set(-0.3, 0.5, 1.0);
         headlightLeft.castShadow = true;
         headlightLeft.shadow.mapSize.width = 512;
         headlightLeft.shadow.mapSize.height = 512;
         headlightLeft.shadow.camera.near = 0.2;
         headlightLeft.shadow.camera.far = 15;
         
-        // Sol far hedefi
         const leftTarget = new THREE.Object3D();
-        leftTarget.position.set(-1, 0, 15); // İleri ve biraz sola
+        leftTarget.position.set(-1, 0, 15);
         playerCar.add(leftTarget);
         headlightLeft.target = leftTarget;
         
         playerCar.add(headlightLeft);
 
         const headlightRight = new THREE.SpotLight(0xffffff, isNightMode ? 2.0 : 1.2, 15, Math.PI / 6, 0.4);
-        headlightRight.position.set(0.3, 0.5, 1.0); // Daha yüksek ve içerde
+        headlightRight.position.set(0.3, 0.5, 1.0);
         headlightRight.castShadow = true;
         headlightRight.shadow.mapSize.width = 512;
         headlightRight.shadow.mapSize.height = 512;
         headlightRight.shadow.camera.near = 0.2;
         headlightRight.shadow.camera.far = 15;
         
-        // Sağ far hedefi
         const rightTarget = new THREE.Object3D();
-        rightTarget.position.set(1, 0, 15); // İleri ve biraz sağa
+        rightTarget.position.set(1, 0, 15);
         playerCar.add(rightTarget);
         headlightRight.target = rightTarget;
         
@@ -851,34 +845,28 @@ async function loadCarModel() {
 
         carHeadlights.push(headlightLeft, headlightRight);
 
-        // Far görsel efektleri - İYİLEŞTİRİLDİ
+        // Far görsel efektleri
         const headlightGlowLeft = new THREE.Mesh(
-            new THREE.SphereGeometry(0.2, 16, 16), // Daha büyük ve detaylı
+            new THREE.SphereGeometry(0.2, 16, 16),
             new THREE.MeshBasicMaterial({ 
                 color: 0xffffcc, 
                 transparent: true, 
-                opacity: isNightMode ? 1.0 : 0.7 // Daha belirgin
+                opacity: isNightMode ? 1.0 : 0.7
             })
         );
         headlightGlowLeft.position.set(-0.3, 0.5, 1.0);
         playerCar.add(headlightGlowLeft);
 
         const headlightGlowRight = new THREE.Mesh(
-            new THREE.SphereGeometry(0.2, 16, 16), // Daha büyük ve detaylı
+            new THREE.SphereGeometry(0.2, 16, 16),
             new THREE.MeshBasicMaterial({ 
                 color: 0xffffcc, 
                 transparent: true, 
-                opacity: isNightMode ? 1.0 : 0.7 // Daha belirgin
+                opacity: isNightMode ? 1.0 : 0.7
             })
         );
         headlightGlowRight.position.set(0.3, 0.5, 1.0);
         playerCar.add(headlightGlowRight);
-        
-        // Far debug bilgisi
-        console.log('🚗 Araba farları oluşturuldu:');
-        console.log('Sol far parlaklığı:', headlightLeft.intensity);
-        console.log('Sağ far parlaklığı:', headlightRight.intensity);
-        console.log('Far menzili:', headlightLeft.distance);
 
         // Nitro ışıkları oluştur
         const nitroLightLeft = new THREE.PointLight(0xff4400, 0, 8);
@@ -895,22 +883,20 @@ async function loadCarModel() {
         nitroLeft.visible = false;
         nitroRight.visible = false;
         
-        // --- Arka far PointLight'ları (KIRMIZI) ---
         const nitroTailLightLeft = new THREE.PointLight(0xff0000, 0, 5);
-        nitroTailLightLeft.position.set(-0.32, 0.28, -1.12); // Sol arka far
+        nitroTailLightLeft.position.set(-0.32, 0.28, -1.12);
         playerCar.add(nitroTailLightLeft);
 
         const nitroTailLightRight = new THREE.PointLight(0xff0000, 0, 5);
-        nitroTailLightRight.position.set(0.32, 0.28, -1.12); // Sağ arka far
+        nitroTailLightRight.position.set(0.32, 0.28, -1.12);
         playerCar.add(nitroTailLightRight);
 
-        // Tüm nitro ışıklarını diziye ekle
         nitroLights.push(nitroLightLeft, nitroLightRight, nitroTailLightLeft, nitroTailLightRight);
         
-        // Direksiyon oluştur (sadece 1. şahıs kamera için)
+        // Direksiyon oluştur
         createSteeringWheel();
         
-        console.log(`${selectedCar.name} modeli başarıyla yüklendi!`);
+        console.log(`✅ ${selectedCar.name} modeli başarıyla yüklendi!`);
         
     } catch (error) {
         console.warn('GLB model yüklenemedi, fallback küp kullanılıyor:', error);
@@ -1847,438 +1833,68 @@ function createCanvas() {
  return canvas;
 }
 
-// Sayfa yüklendiğinde zaman seçim menüsünü göster
-window.addEventListener('load', async () => {
- // Body stilini ayarla
- document.body.style.margin = '0';
- document.body.style.padding = '0';
- document.body.style.overflow = 'hidden';
- document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
- 
- // Canvas ve UI oluştur
- createCanvas();
- createGameUI();
- 
- // Zaman seçim menüsünü göster
- createDayNightSelectionMenu();
- 
- console.log('3D WebGL Araba Yarış Simülasyonu yüklendi!');
- console.log('Önce zaman seçin, sonra araç seçin ve oyunu başlatın!');
-});
+// Araç seçim ekranı için yeni değişkenler
 
-// Touch kontrolleri (mobil destek)
-let touchStartX = 0;
 
-document.addEventListener('touchstart', (e) => {
- touchStartX = e.touches[0].clientX;
-});
 
-document.addEventListener('touchend', (e) => {
- if (!gameActive) {
-   if (document.getElementById('gameOver') && document.getElementById('gameOver').style.display === 'block') {
-     restartGame();
-   }
-   return;
- }
- 
- const touchEndX = e.changedTouches[0].clientX;
- const diff = touchEndX - touchStartX;
- 
- if (Math.abs(diff) > 50) { // Minimum 50px kaydırma
-   if (diff > 0 && carPosition < 3) {
-     // Sağa kaydırma
-     carPosition++;
-     carTargetX = getXFromLane(carPosition);
-   } else if (diff < 0 && carPosition > 0) {
-     // Sola kaydırma
-     carPosition--;
-     carTargetX = getXFromLane(carPosition);
-   }
- }
-});
-
-// Performans optimizasyonu
-/*
-function optimizePerformance() {
- // Düşük FPS algılandığında grafik kalitesini düşür
- let lastTime = performance.now();
- let frameCount = 0;
- let fps = 60;
- 
- function measureFPS() {
-   frameCount++;
-   const currentTime = performance.now();
-   
-   if (currentTime - lastTime >= 1000) {
-     fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
-     frameCount = 0;
-     lastTime = currentTime;
-     
-     // Düşük FPS'de optimizasyon
-     if (fps < 30) {
-       renderer.setPixelRatio(Math.min(window.devicePixelRatio * 0.8, 1));
-       console.log('Performans optimizasyonu aktif - FPS:', fps);
-     } else if (fps > 50) {
-       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-     }
-   }
-   
-   requestAnimationFrame(measureFPS);
- }
- 
- measureFPS();
-}*/
-
-// Başlangıçta performans izlemeyi başlat
-//setTimeout(optimizePerformance, 2000);
-
-// Coin oluşturma fonksiyonu
-function createCoins() {
-    // Eski coinleri temizle
-    coins.forEach(coin => scene.remove(coin));
-    coins = [];
-
-    const coinCount = 40; // Yolda toplam 40 coin
-    for (let i = 0; i < coinCount; i++) {
-        const lane = Math.floor(Math.random() * 4);
-        const z = (i + 2) * 8 + Math.random() * 4; // Coinler arasında mesafe
-
-        // Altın renkli dönen silindir coin
-        const coinGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8);
-        const coinMaterial = new THREE.MeshLambertMaterial({ 
-            color: 0xFFD700, // Altın sarısı
-            emissive: 0x332200 // Hafif parlaklık
-        });
-        const coin = new THREE.Mesh(coinGeometry, coinMaterial);
-        
-        coin.position.set(getXFromLane(lane), 0.8, z);
-        coin.rotation.x = Math.PI / 2; // Yatay dönsün
-        coin.castShadow = true;
-        
-        // Coin'e özel veriler
-        coin.userData = {
-            lane: lane,
-            z: z,
-            originalY: 0.8,
-            rotationSpeed: 0.05 + Math.random() * 0.03,
-            bobSpeed: 0.02 + Math.random() * 0.01,
-            isCoin: true,
-            collected: false
-        };
-
-        // Coin etrafında parıltı efekti
-        const glowGeometry = new THREE.SphereGeometry(0.5, 8, 8);
-        const glowMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xFFD700, 
-            transparent: true, 
-            opacity: 0.2 
-        });
-        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-        glow.position.copy(coin.position);
-        coin.add(glow);
-
-        coins.push(coin);
-        scene.add(coin);
-    }
-}
-
-// Coin güncelleme fonksiyonu
-function updateCoins() {
-    for (let i = coins.length - 1; i >= 0; i--) {
-        const coin = coins[i];
-        
-        if (coin.userData.collected) continue;
-
-        // Coin animasyonu - döndürme ve yüzdürme
-        coin.rotation.z += coin.userData.rotationSpeed;
-        coin.position.y = coin.userData.originalY + 
-            Math.sin(Date.now() * coin.userData.bobSpeed + coin.userData.z) * 0.2;
-
-        // Çarpışma kontrolü - coin toplama
-        const playerBox = new THREE.Box3().setFromObject(playerCar);
-        const coinBox = new THREE.Box3().setFromObject(coin);
-        
-        if (playerBox.intersectsBox(coinBox)) {
-            // Coin toplandı!
-            coin.userData.collected = true;
-            scene.remove(coin);
-            coins.splice(i, 1);
+// Araç seçim ekranı için araç modellerini yükle
+async function loadCarModelsForSelection() {
+    console.log('🚗 Araç seçim ekranı için modeller yükleniyor...');
+    console.log('📂 Yüklenecek araç sayısı:', AVAILABLE_CARS.length);
+    
+    loadedCarModels = [];
+    
+    for (let i = 0; i < AVAILABLE_CARS.length; i++) {
+        try {
+            const car = AVAILABLE_CARS[i];
+            console.log(`🔄 ${i + 1}/${AVAILABLE_CARS.length} - ${car.name} yükleniyor...`);
+            console.log(`📍 Dosya yolu: ${car.path}`);
             
-            // Skor artır
-            score += 100; // Her coin 100 puan
-            coinCount++;
+            const gltf = await new Promise((resolve, reject) => {
+                loader.load(
+                    car.path,
+                    (gltf) => {
+                        console.log(`✅ ${car.name} başarıyla yüklendi`);
+                        resolve(gltf);
+                    },
+                    (progress) => {
+                        console.log(`📈 ${car.name} yükleme ilerlemesi:`, Math.round((progress.loaded / progress.total) * 100) + '%');
+                    },
+                    (error) => {
+                        console.error(`❌ ${car.name} yükleme hatası:`, error);
+                        reject(error);
+                    }
+                );
+            });
             
-            // Coin toplama ses efekti (opsiyonel)
-            console.log(`Coin toplandı! Toplam: ${coinCount}`);
+            const carModel = gltf.scene.clone();
+            carModel.scale.set(car.scale, car.scale, car.scale);
+            carModel.position.set(0, 0, 0);
             
-            // Coin toplama efekti göster
-            showCoinCollectEffect(coin.position);
-            continue;
-        }
-
-        // Coin yeniden konumlandırma (çok geride kalırsa)
-        if (coin.userData.z < carZ - 30) {
-            coin.userData.z = carZ + 80 + Math.random() * 40;
-            const newLane = Math.floor(Math.random() * 4);
-            coin.userData.lane = newLane;
-            coin.position.set(getXFromLane(newLane), coin.userData.originalY, coin.userData.z);
-        }
-        
-        // Coin pozisyonunu güncelle
-        coin.position.z = coin.userData.z;
-    }
-}
-
-// Coin toplama efekti
-function showCoinCollectEffect(position) {
-    // Parıltı efekti oluştur
-    const effectGeometry = new THREE.SphereGeometry(0.8, 8, 8);
-    const effectMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0xFFD700, 
-        transparent: true, 
-        opacity: 0.8 
-    });
-    const effect = new THREE.Mesh(effectGeometry, effectMaterial);
-    effect.position.copy(position);
-    scene.add(effect);
-
-    // Efekti büyüt ve kaybet
-    let scale = 0.1;
-    const animateEffect = () => {
-        scale += 0.1;
-        effect.scale.set(scale, scale, scale);
-        effect.material.opacity -= 0.05;
-        
-        if (effect.material.opacity <= 0) {
-            scene.remove(effect);
-            return;
-        }
-        requestAnimationFrame(animateEffect);
-    };
-    animateEffect();
-}
-
-// Hava durumu sistemi
-function createWeatherSystem(mapType) {
-    // Eski hava durumu efektlerini temizle
-    clearWeatherEffects();
-    
-    switch(mapType.name) {
-        case "Normal":
-            // Hafif rüzgar efekti
-            createWindEffect();
-            break;
-        case "Çöl":
-            // Kum fırtınası efekti
-            createSandstormEffect();
-            break;
-        case "Karlı":
-            // Kar yağışı efekti
-            createSnowEffect();
-            break;
-        case "Bahar":
-            // Yağmur efekti
-            createRainEffect();
-            break;
-    }
-}
-
-function clearWeatherEffects() {
-    // Tüm hava durumu parçacıklarını temizle
-    weatherParticles.forEach(particle => {
-        scene.remove(particle);
-        if (particle.geometry) particle.geometry.dispose();
-        if (particle.material) particle.material.dispose();
-    });
-    weatherParticles = [];
-    
-    // Eski hava durumu sistemini kaldır
-    if (currentWeatherSystem) {
-        scene.remove(currentWeatherSystem);
-        currentWeatherSystem = null;
-    }
-}
-
-function createWindEffect() {
-    // Hafif yaprak uçuşu efekti
-    for (let i = 0; i < 20; i++) {
-        const leafGeometry = new THREE.PlaneGeometry(0.2, 0.3);
-        const leafMaterial = new THREE.MeshLambertMaterial({ 
-            color: Math.random() > 0.5 ? 0x228B22 : 0x32CD32,
-            transparent: true,
-            opacity: 0.7,
-            side: THREE.DoubleSide
-        });
-        const leaf = new THREE.Mesh(leafGeometry, leafMaterial);
-        
-        leaf.position.set(
-            (Math.random() - 0.5) * 60,
-            Math.random() * 15 + 5,
-            Math.random() * 200 - 50
-        );
-        
-        leaf.userData = {
-            originalX: leaf.position.x,
-            speed: Math.random() * 0.02 + 0.01,
-            rotSpeed: Math.random() * 0.05 + 0.02
-        };
-        
-        weatherParticles.push(leaf);
-        scene.add(leaf);
-    }
-}
-
-function createSandstormEffect() {
-    // Kum parçacık sistemi
-    const particleCount = 150;
-    const particles = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    
-    for (let i = 0; i < particleCount; i++) {
-        positions[i * 3] = (Math.random() - 0.5) * 100;
-        positions[i * 3 + 1] = Math.random() * 20;
-        positions[i * 3 + 2] = Math.random() * 200 - 50;
-    }
-    
-    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    
-    const sandMaterial = new THREE.PointsMaterial({
-        color: 0xF4A460,
-        size: 3,
-        transparent: true,
-        opacity: 0.6
-    });
-    
-    const sandstorm = new THREE.Points(particles, sandMaterial);
-    sandstorm.userData = { speed: 0.3, wind: 0.05 };
-    
-    currentWeatherSystem = sandstorm;
-    scene.add(sandstorm);
-    
-    // Görüş mesafesini azalt
-    scene.fog.density = 0.02;
-}
-
-function createSnowEffect() {
-    // Kar yağışı parçacık sistemi
-    const particleCount = 200;
-    const particles = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    
-    for (let i = 0; i < particleCount; i++) {
-        positions[i * 3] = (Math.random() - 0.5) * 80;
-        positions[i * 3 + 1] = Math.random() * 30 + 10;
-        positions[i * 3 + 2] = Math.random() * 200 - 50;
-    }
-    
-    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    
-    const snowMaterial = new THREE.PointsMaterial({
-        color: 0xFFFFFF,
-        size: 2,
-        transparent: true,
-        opacity: 0.8
-    });
-    
-    const snow = new THREE.Points(particles, snowMaterial);
-    snow.userData = { speed: 0.1, swirl: 0.02 };
-    
-    currentWeatherSystem = snow;
-    scene.add(snow);
-    
-    // Daha az sis
-    scene.fog.density = 0.015;
-}
-
-function createRainEffect() {
-    // Yağmur efekti
-    for (let i = 0; i < 100; i++) {
-        const rainGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 3);
-        const rainMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x87CEEB,
-            transparent: true,
-            opacity: 0.6
-        });
-        const raindrop = new THREE.Mesh(rainGeometry, rainMaterial);
-        
-        raindrop.position.set(
-            (Math.random() - 0.5) * 60,
-            Math.random() * 25 + 15,
-            Math.random() * 200 - 50
-        );
-        
-        raindrop.userData = {
-            speed: Math.random() * 0.3 + 0.2,
-            wind: Math.random() * 0.05
-        };
-        
-        weatherParticles.push(raindrop);
-        scene.add(raindrop);
-    }
-    
-    // Daha fazla sis
-    scene.fog.density = 0.025;
-}
-
-function updateWeatherEffects() {
-    // Rüzgar efekti (yapraklar)
-    weatherParticles.forEach(particle => {
-        if (particle.userData) {
-            // Yapraklar için
-            if (particle.userData.rotSpeed) {
-                particle.rotation.z += particle.userData.rotSpeed;
-                particle.position.x += particle.userData.speed;
-                particle.position.y += Math.sin(Date.now() * 0.001 + particle.userData.originalX) * 0.02;
-                
-                if (particle.position.x > 30) {
-                    particle.position.x = -30;
+            // Gölge ayarları
+            carModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
                 }
-            }
+            });
             
-            // Yağmur damlaları için
-            if (particle.userData.speed && !particle.userData.rotSpeed) {
-                particle.position.y -= particle.userData.speed;
-                particle.position.x += particle.userData.wind;
-                
-                if (particle.position.y < 0) {
-                    particle.position.y = 40;
-                    particle.position.x = (Math.random() - 0.5) * 60;
-                }
-            }
+            loadedCarModels.push(carModel);
+            console.log(`✅ ${car.name} modeli hazırlandı`);
+            
+        } catch (error) {
+            console.warn(`⚠️ ${AVAILABLE_CARS[i].name} modeli yüklenemedi:`, error);
+            loadedCarModels.push(null);
         }
-    });
-    
-    // Partikül sistemleri için (kar, kum fırtınası)
-    if (currentWeatherSystem && currentWeatherSystem.userData) {
-        const positions = currentWeatherSystem.geometry.attributes.position.array;
-        const userData = currentWeatherSystem.userData;
-        
-        for (let i = 0; i < positions.length; i += 3) {
-            if (userData.speed) {
-                positions[i + 1] -= userData.speed; // Y pozisyonu (düşme)
-                
-                if (userData.wind) {
-                    positions[i] += userData.wind * (Math.random() - 0.5); // X pozisyonu (rüzgar)
-                }
-                
-                if (userData.swirl) {
-                    positions[i] += Math.sin(Date.now() * 0.001 + i) * userData.swirl;
-                }
-                
-                // Sınırları kontrol et
-                if (positions[i + 1] < 0) {
-                    positions[i + 1] = 30;
-                    positions[i] = (Math.random() - 0.5) * 80;
-                }
-            }
-        }
-        
-        currentWeatherSystem.geometry.attributes.position.needsUpdate = true;
     }
+    
+    console.log('🎯 Araç yükleme tamamlandı. Başarılı:', loadedCarModels.filter(m => m !== null).length);
+    console.log('❌ Başarısız:', loadedCarModels.filter(m => m === null).length);
 }
 
-// Araç seçim menüsü oluştur
+// 3D araç seçim ekranını oluştur
 function createCarSelectionMenu() {
+    // Ana konteyner
     const menuContainer = document.createElement('div');
     menuContainer.id = 'carSelectionMenu';
     menuContainer.style.position = 'fixed';
@@ -2286,7 +1902,7 @@ function createCarSelectionMenu() {
     menuContainer.style.left = '0';
     menuContainer.style.width = '100%';
     menuContainer.style.height = '100%';
-    menuContainer.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+    menuContainer.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
     menuContainer.style.display = 'flex';
     menuContainer.style.flexDirection = 'column';
     menuContainer.style.alignItems = 'center';
@@ -2294,468 +1910,1326 @@ function createCarSelectionMenu() {
     menuContainer.style.zIndex = '2000';
     menuContainer.style.fontFamily = 'Arial, sans-serif';
 
+    // Başlık
     const title = document.createElement('h1');
-    title.textContent = 'ARAÇ SEÇİMİ';
+    title.textContent = '🚗 ARAÇ SEÇİMİ 🚗';
     title.style.color = '#FFFFFF';
-    title.style.marginBottom = '40px';
+    title.style.marginBottom = '20px';
     title.style.fontSize = '48px';
     title.style.textShadow = '3px 3px 6px rgba(0,0,0,0.8)';
+    title.style.textAlign = 'center';
     menuContainer.appendChild(title);
 
-    const carContainer = document.createElement('div');
-    carContainer.style.display = 'flex';
-    carContainer.style.gap = '30px';
-    carContainer.style.marginBottom = '40px';
+    // 3D sahne konteyner
+    const sceneContainer = document.createElement('div');
+    sceneContainer.style.position = 'relative';
+    sceneContainer.style.width = '600px';
+    sceneContainer.style.height = '400px';
+    sceneContainer.style.border = '3px solid #FFD700';
+    sceneContainer.style.borderRadius = '15px';
+    sceneContainer.style.background = 'linear-gradient(45deg, #2c3e50, #3498db)';
+    sceneContainer.style.boxShadow = '0 0 30px rgba(255, 215, 0, 0.5)';
+    sceneContainer.style.marginBottom = '30px';
+    sceneContainer.style.overflow = 'hidden';
 
-    AVAILABLE_CARS.forEach((car, index) => {
-        const carCard = document.createElement('div');
-        carCard.style.background = index === selectedCarIndex ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)';
-        carCard.style.border = index === selectedCarIndex ? '3px solid #FFD700' : '2px solid #FFFFFF';
-        carCard.style.borderRadius = '15px';
-        carCard.style.padding = '20px';
-        carCard.style.textAlign = 'center';
-        carCard.style.cursor = 'pointer';
-        carCard.style.transition = 'all 0.3s ease';
-        carCard.style.minWidth = '200px';
+    // 3D Canvas
+    carSelectionCanvas = document.createElement('canvas');
+    carSelectionCanvas.style.width = '100%';
+    carSelectionCanvas.style.height = '100%';
+    carSelectionCanvas.style.borderRadius = '12px';
+    sceneContainer.appendChild(carSelectionCanvas);
 
-        const carName = document.createElement('h3');
-        carName.textContent = car.name;
-        carName.style.color = '#FFFFFF';
-        carName.style.margin = '0 0 10px 0';
-        carName.style.fontSize = '24px';
+    // Araç bilgi paneli (3D sahne üzerine overlay)
+    const carInfoPanel = document.createElement('div');
+    carInfoPanel.id = 'carInfoPanel';
+    carInfoPanel.style.position = 'absolute';
+    carInfoPanel.style.top = '10px';
+    carInfoPanel.style.left = '10px';
+    carInfoPanel.style.background = 'rgba(0, 0, 0, 0.8)';
+    carInfoPanel.style.color = '#FFFFFF';
+    carInfoPanel.style.padding = '15px';
+    carInfoPanel.style.borderRadius = '10px';
+    carInfoPanel.style.fontSize = '16px';
+    carInfoPanel.style.minWidth = '200px';
+    carInfoPanel.style.border = '2px solid #FFD700';
+    sceneContainer.appendChild(carInfoPanel);
 
-        const carDesc = document.createElement('p');
-        carDesc.textContent = car.description;
-        carDesc.style.color = '#DDDDDD';
-        carDesc.style.margin = '0';
-        carDesc.style.fontSize = '14px';
+    menuContainer.appendChild(sceneContainer);
 
-        carCard.appendChild(carName);
-        carCard.appendChild(carDesc);
+    // Kontrol butonları konteyner
+    const controlsContainer = document.createElement('div');
+    controlsContainer.style.display = 'flex';
+    controlsContainer.style.gap = '20px';
+    controlsContainer.style.alignItems = 'center';
+    controlsContainer.style.marginBottom = '30px';
 
-        carCard.addEventListener('click', () => {
-            selectedCarIndex = index;
-            updateCarSelection();
-        });
+    // Önceki araç butonu
+    const prevButton = document.createElement('button');
+    prevButton.innerHTML = '⬅️ ÖNCEKİ';
+    prevButton.style.background = 'linear-gradient(45deg, #e74c3c, #c0392b)';
+    prevButton.style.border = 'none';
+    prevButton.style.borderRadius = '15px';
+    prevButton.style.padding = '15px 25px';
+    prevButton.style.fontSize = '18px';
+    prevButton.style.color = '#FFFFFF';
+    prevButton.style.cursor = 'pointer';
+    prevButton.style.fontWeight = 'bold';
+    prevButton.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+    prevButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    prevButton.style.transition = 'all 0.3s ease';
 
-        carCard.addEventListener('mouseenter', () => {
-            if (index !== selectedCarIndex) {
-                carCard.style.background = 'rgba(255,255,255,0.2)';
-                carCard.style.transform = 'scale(1.05)';
-            }
-        });
+    // Sonraki araç butonu
+    const nextButton = document.createElement('button');
+    nextButton.innerHTML = 'SONRAKİ ➡️';
+    nextButton.style.background = 'linear-gradient(45deg, #3498db, #2980b9)';
+    nextButton.style.border = 'none';
+    nextButton.style.borderRadius = '15px';
+    nextButton.style.padding = '15px 25px';
+    nextButton.style.fontSize = '18px';
+    nextButton.style.color = '#FFFFFF';
+    nextButton.style.cursor = 'pointer';
+    nextButton.style.fontWeight = 'bold';
+    nextButton.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+    nextButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    nextButton.style.transition = 'all 0.3s ease';
 
-        carCard.addEventListener('mouseleave', () => {
-            if (index !== selectedCarIndex) {
-                carCard.style.background = 'rgba(255,255,255,0.1)';
-                carCard.style.transform = 'scale(1)';
-            }
-        });
+    // Araç indeksi gösterge
+    const carIndexDisplay = document.createElement('div');
+    carIndexDisplay.id = 'carIndexDisplay';
+    carIndexDisplay.style.background = 'rgba(255, 255, 255, 0.2)';
+    carIndexDisplay.style.color = '#FFFFFF';
+    carIndexDisplay.style.padding = '10px 20px';
+    carIndexDisplay.style.borderRadius = '20px';
+    carIndexDisplay.style.fontSize = '16px';
+    carIndexDisplay.style.fontWeight = 'bold';
+    carIndexDisplay.style.border = '2px solid #FFD700';
 
-        carContainer.appendChild(carCard);
-    });
+    controlsContainer.appendChild(prevButton);
+    controlsContainer.appendChild(carIndexDisplay);
+    controlsContainer.appendChild(nextButton);
+    menuContainer.appendChild(controlsContainer);
 
-    function updateCarSelection() {
-        Array.from(carContainer.children).forEach((card, index) => {
-            if (index === selectedCarIndex) {
-                card.style.background = 'rgba(255,255,255,0.3)';
-                card.style.border = '3px solid #FFD700';
-                card.style.transform = 'scale(1.1)';
-            } else {
-                card.style.background = 'rgba(255,255,255,0.1)';
-                card.style.border = '2px solid #FFFFFF';
-                card.style.transform = 'scale(1)';
-            }
-        });
-    }
-
+    // Oyunu başlat butonu
     const startButton = document.createElement('button');
-    startButton.textContent = 'OYUNU BAŞLAT';
-    startButton.style.background = 'linear-gradient(45deg, #FF6B6B, #FF8E53)';
+    startButton.textContent = '🏁 OYUNU BAŞLAT 🏁';
+    startButton.style.background = 'linear-gradient(45deg, #27ae60, #2ecc71)';
     startButton.style.border = 'none';
     startButton.style.borderRadius = '25px';
-    startButton.style.padding = '15px 40px';
-    startButton.style.fontSize = '24px';
+    startButton.style.padding = '20px 50px';
+    startButton.style.fontSize = '28px';
     startButton.style.color = '#FFFFFF';
     startButton.style.cursor = 'pointer';
     startButton.style.fontWeight = 'bold';
     startButton.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
-    startButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     startButton.style.transition = 'all 0.3s ease';
 
-    startButton.addEventListener('mouseenter', () => {
-        startButton.style.transform = 'scale(1.1)';
-        startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
-    });
+    menuContainer.appendChild(startButton);
 
-    startButton.addEventListener('mouseleave', () => {
-        startButton.style.transform = 'scale(1)';
-        startButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
-    });
+    // Kontrol talimatları
+    const instructions = document.createElement('div');
+    instructions.style.color = '#CCCCCC';
+    instructions.style.fontSize = '16px';
+    instructions.style.textAlign = 'center';
+    instructions.style.marginTop = '20px';
+    instructions.style.lineHeight = '1.5';
+    instructions.innerHTML = `
+        <p><strong>🎮 Kontroller:</strong></p>
+        <p>← → Ok Tuşları: Araç değiştir | Enter/Space: Başlat</p>
+        <p>Fare ile butonları kullanabilirsiniz</p>
+    `;
+    menuContainer.appendChild(instructions);
 
-    startButton.addEventListener('click', async () => {
-        menuContainer.style.display = 'none';
-        gameStarted = true;
-        await startGame();
+    document.body.appendChild(menuContainer);
+
+    // 3D sahneyi başlat
+    init3DCarSelectionScene();
+
+    // Event listener'ları ekle
+    prevButton.addEventListener('click', () => changeSelectedCar(-1));
+    nextButton.addEventListener('click', () => changeSelectedCar(1));
+    startButton.addEventListener('click', startGameWithSelectedCar);
+
+    // Hover efektleri
+    [prevButton, nextButton, startButton].forEach(button => {
+        button.addEventListener('mouseenter', () => {
+            button.style.transform = 'scale(1.1)';
+            button.style.boxShadow = '0 8px 25px rgba(0,0,0,0.5)';
+        });
+        
+        button.addEventListener('mouseleave', () => {
+            button.style.transform = 'scale(1)';
+            button.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+        });
     });
 
     // Klavye kontrolleri
-    document.addEventListener('keydown', (e) => {
-        if (!gameStarted) {
+    const keyHandler = (e) => {
+        if (menuContainer.style.display !== 'none') {
             switch(e.code) {
                 case 'ArrowLeft':
-                    selectedCarIndex = Math.max(0, selectedCarIndex - 1);
-                    updateCarSelection();
+                    e.preventDefault();
+                    changeSelectedCar(-1);
                     break;
                 case 'ArrowRight':
-                    selectedCarIndex = Math.min(AVAILABLE_CARS.length - 1, selectedCarIndex + 1);
-                    updateCarSelection();
+                    e.preventDefault();
+                    changeSelectedCar(1);
                     break;
                 case 'Enter':
                 case 'Space':
-                    startButton.click();
+                    e.preventDefault();
+                    startGameWithSelectedCar();
                     break;
             }
         }
-    });
+    };
+    
+    document.addEventListener('keydown', keyHandler);
+    
+    // Cleanup function
+    menuContainer.cleanupHandler = () => {
+        document.removeEventListener('keydown', keyHandler);
+    };
 
-    const instructions = document.createElement('p');
-    instructions.textContent = 'Klavye: ← → ile araç seçimi, Enter/Space ile başlat';
-    instructions.style.color = '#CCCCCC';
-    instructions.style.fontSize = '16px';
-    instructions.style.marginTop = '20px';
-
-    menuContainer.appendChild(carContainer);
-    menuContainer.appendChild(startButton);
-    menuContainer.appendChild(instructions);
-    document.body.appendChild(menuContainer);
+    // İlk arabayı göster
+    updateCarDisplay();
 }
 
-// Kamera güncelleme fonksiyonu
-function updateCamera() {
+// 3D araç seçim sahnesini başlat
+function init3DCarSelectionScene() {
+    // Sahne oluştur
+    carSelectionScene = new THREE.Scene();
+    carSelectionScene.background = new THREE.Color(0x1a1a2e);
+
+    // Kamera oluştur
+    carSelectionCamera = new THREE.PerspectiveCamera(50, 600/400, 0.1, 1000);
+    carSelectionCamera.position.set(4, 2, 6);
+    carSelectionCamera.lookAt(0, 0, 0);
+
+    // Renderer oluştur
+    carSelectionRenderer = new THREE.WebGLRenderer({ 
+        canvas: carSelectionCanvas, 
+        antialias: true,
+        alpha: true
+    });
+    carSelectionRenderer.setSize(600, 400);
+    carSelectionRenderer.shadowMap.enabled = true;
+    carSelectionRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    carSelectionRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Işıklandırma
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    carSelectionScene.add(ambientLight);
+
+    // Ana spot ışık
+    const spotLight = new THREE.SpotLight(0xffffff, 1.5);
+    spotLight.position.set(5, 8, 5);
+    spotLight.angle = Math.PI / 4;
+    spotLight.penumbra = 0.3;
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 1024;
+    spotLight.shadow.mapSize.height = 1024;
+    carSelectionScene.add(spotLight);
+
+    // Ek dolgu ışığı
+    const fillLight = new THREE.DirectionalLight(0x4477ff, 0.4);
+    fillLight.position.set(-3, 2, 4);
+    carSelectionScene.add(fillLight);
+
+    // Arka plan için rengarenk ışık
+    const backLight = new THREE.PointLight(0xff6600, 0.5, 20);
+    backLight.position.set(-4, 3, -2);
+    carSelectionScene.add(backLight);
+
+    // Platform (araba altı zemin)
+    const platformGeometry = new THREE.CylinderGeometry(3, 3, 0.1, 32);
+    const platformMaterial = new THREE.MeshLambertMaterial({ 
+        color: 0x2c3e50,
+        transparent: true,
+        opacity: 0.8
+    });
+    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+    platform.position.y = -0.5;
+    platform.receiveShadow = true;
+    carSelectionScene.add(platform);
+
+    // Platform çevresi halka efekti
+    const ringGeometry = new THREE.TorusGeometry(3.2, 0.1, 8, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xFFD700,
+        transparent: true,
+        opacity: 0.7
+    });
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.y = -0.45;
+    ring.rotation.x = Math.PI / 2;
+    carSelectionScene.add(ring);
+
+    // Animasyon döngüsü
+    carSelectionAnimationLoop();
+}
+
+// Araç seçimini değiştir
+function changeSelectedCar(direction) {
+    selectedCarIndex += direction;
+    
+    // Döngüsel seçim
+    if (selectedCarIndex < 0) {
+        selectedCarIndex = AVAILABLE_CARS.length - 1;
+    } else if (selectedCarIndex >= AVAILABLE_CARS.length) {
+        selectedCarIndex = 0;
+    }
+    
+    updateCarDisplay();
+}
+
+// Araç görünümünü güncelle
+function updateCarDisplay() {
+    // Eski arabayı kaldır
+    if (currentDisplayedCar) {
+        carSelectionScene.remove(currentDisplayedCar);
+    }
+    
+    // Yeni arabayı ekle
+    if (loadedCarModels[selectedCarIndex]) {
+        currentDisplayedCar = loadedCarModels[selectedCarIndex].clone();
+        currentDisplayedCar.position.set(0, 0, 0);
+        currentDisplayedCar.rotation.y = 0;
+        carSelectionScene.add(currentDisplayedCar);
+    }
+    
+    // Bilgi panelini güncelle
+    const carInfoPanel = document.getElementById('carInfoPanel');
+    const carIndexDisplay = document.getElementById('carIndexDisplay');
+    
+    if (carInfoPanel) {
+        const car = AVAILABLE_CARS[selectedCarIndex];
+        carInfoPanel.innerHTML = `
+            <h3 style="margin: 0 0 10px 0; color: #FFD700;">${car.name}</h3>
+            <p style="margin: 0; color: #CCCCCC;">${car.description}</p>
+            <br>
+            <div style="color: #00FFFF;">
+                <strong>Özellikler:</strong><br>
+                • Ölçek: ${car.scale}<br>
+                • Model: ${car.path.split('/').pop()}<br>
+                • Durum: ${loadedCarModels[selectedCarIndex] ? '✅ Hazır' : '❌ Yüklenmedi'}
+            </div>
+        `;
+    }
+    
+    if (carIndexDisplay) {
+        carIndexDisplay.textContent = `${selectedCarIndex + 1} / ${AVAILABLE_CARS.length}`;
+    }
+}
+
+// Araç seçim animasyon döngüsü
+function carSelectionAnimationLoop() {
+    // Renderer ve sahne kontrolleri
+    if (!carSelectionRenderer || !carSelectionScene || !carSelectionCamera) {
+        console.warn('⚠️ Araç seçim animasyon döngüsü durduruluyor - eksik objeler');
+        return;
+    }
+    
+    try {
+        // Arabayı döndür
+        if (currentDisplayedCar) {
+            currentDisplayedCar.rotation.y += 0.01;
+            
+            // Hafif yukarı aşağı bobbing efekti
+            currentDisplayedCar.position.y = Math.sin(Date.now() * 0.002) * 0.1;
+        }
+        
+        // Arka plan rengini değiştir (yavaşça)
+        const time = Date.now() * 0.0005;
+        const r = Math.sin(time) * 0.5 + 0.5;
+        const g = Math.sin(time + 2) * 0.5 + 0.5;
+        const b = Math.sin(time + 4) * 0.5 + 0.5;
+        carSelectionScene.background.setRGB(r * 0.1, g * 0.1, b * 0.2);
+        
+        // Render et
+        carSelectionRenderer.render(carSelectionScene, carSelectionCamera);
+        
+        // Bir sonraki frame'i talep et
+        carSelectionAnimationId = requestAnimationFrame(carSelectionAnimationLoop);
+        
+    } catch (error) {
+        console.error('❌ Araç seçim animasyon hatası:', error);
+        // Hata durumunda animasyon döngüsünü durdur
+        if (carSelectionAnimationId) {
+            cancelAnimationFrame(carSelectionAnimationId);
+            carSelectionAnimationId = null;
+        }
+    }
+}
+
+// Seçilen araçla oyunu başlat
+async function startGameWithSelectedCar() {
+    // Seçim menüsünü kapat
+    const menuContainer = document.getElementById('carSelectionMenu');
+    if (menuContainer) {
+        // Cleanup
+        if (menuContainer.cleanupHandler) {
+            menuContainer.cleanupHandler();
+        }
+        menuContainer.style.display = 'none';
+    }
+    
+    // 3D seçim sahnesini temizle
+    cleanup3DCarSelectionScene();
+    
+    // Oyunu başlat
+    gameStarted = true;
+    await startGame();
+}
+
+// 3D araç seçim sahnesini temizle
+function cleanup3DCarSelectionScene() {
+    if (carSelectionAnimationId) {
+        cancelAnimationFrame(carSelectionAnimationId);
+        carSelectionAnimationId = null;
+    }
+    
+    if (carSelectionRenderer) {
+        carSelectionRenderer.dispose();
+        carSelectionRenderer = null;
+    }
+    
+    if (carSelectionScene) {
+        carSelectionScene.clear();
+        carSelectionScene = null;
+    }
+    
+    carSelectionCamera = null;
+    carSelectionCanvas = null;
+    currentDisplayedCar = null;
+    
+    console.log('🧹 3D araç seçim sahnesi temizlendi');
+}
+
+// Ana oyun başlatma fonksiyonunu güncelle
+async function startGame() {
+    scene = new THREE.Scene();
+    const canvas = document.getElementById('gameCanvas');
+    
+    // YOL MODELLERİNİ YÜKLE - YENİ EKLENDİ
+    await loadRoadModels();
+    
+    await loadCarModel();
+    await loadObstacleModels();
+    createObstacles();
+    createCoins(); // Coin'leri oluştur
+
+    // Three.js sahne kurulumu
+    scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
+  
+    // Kamera - FAR PLANE İYİLEŞTİRİLDİ
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); // 1000'den 2000'e artırıldı
+  
+    // Renderer - GÖLGE KALİTESİ İYİLEŞTİRİLDİ
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Yumuşak gölgeler
+    renderer.shadowMap.autoUpdate = true;
+    renderer.setClearColor(MAP_TYPES[0].skyColor); // İlk harita tipi için gökyüzü rengi
+    
+    // GÖLGE KALİTESİ ARTIŞI
+    renderer.shadowMap.width = 4096; // Yüksek çözünürlük gölge
+    renderer.shadowMap.height = 4096;
+  
+    // Işıklar
+    setupLighting();
+    await loadStreetlightModel();
+    
+    // Gece modu bilgisi ve OTOMATIK AY HAREKETİ AKTIFLEŞTIRME
+    if (isNightMode) {
+        console.log('🌙 GECE MODU AKTIF!');
+        console.log('Ay gökyüzünde merkezi konumda (yukarı bakın)');
+        console.log('WASD tuşları ile ayı hareket ettirebilirsiniz (otomatik aktif)');
+        canMoveMoon = true; // Gece modunda otomatik olarak ay hareket modunu aç
+        showMoonControlNotification(); // Kullanıcıya bildirim göster
+    }
+    
+    // İLK MÜZİK BAŞLAT
+    playMapMusic(0);
+    
+    // Pencere boyut değişikliği
+    window.addEventListener('resize', onWindowResize);
+  
+    // Kontroller
+    document.addEventListener('keydown', handleKeyPress);
+  
+    // İlk haritayı oluştur (normal)
+    createRoad(MAP_TYPES[0]);
+  
+    // Araba modelini yükle
+    await loadCarModel();
+  
+    // Engelleri oluştur
+    createObstacles();
+  
+    // Oyun döngüsünü başlat
+    gameLoop();
+}
+
+// Gece modunda ay durumu göstergesi
+function createMoonStatusIndicator() {
+    if (!isNightMode) return;
+    
+    let indicator = document.getElementById('moonStatus');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'moonStatus';
+        indicator.style.position = 'absolute';
+        indicator.style.top = '20px';
+        indicator.style.right = '20px';
+        indicator.style.background = 'rgba(0, 0, 50, 0.9)';
+        indicator.style.color = '#FFFFFF';
+        indicator.style.padding = '20px';
+        indicator.style.borderRadius = '10px';
+        indicator.style.fontSize = '18px';
+        indicator.style.zIndex = '100';
+        indicator.style.border = '2px solid #FFFF00';
+        indicator.style.fontFamily = 'Arial, sans-serif';
+        document.body.appendChild(indicator);
+    }
+    
+    indicator.innerHTML = `
+        🌙 Gece Modu<br>
+        Ay Hareket: ${canMoveMoon ? '<span style="color: #00FF00;">AÇIK</span>' : '<span style="color: #FF6666;">KAPALI</span>'}
+    `;
+    
+    indicator.style.display = 'block';
+}
+
+// Araç seçim ekranı için yeni değişkenler
+let carSelectionScene = null;
+let carSelectionCamera = null;
+let carSelectionRenderer = null;
+let carSelectionCanvas = null;
+let currentDisplayedCar = null;
+let carSelectionAnimationId = null;
+
+// Yüklenen araç modelleri (seçim ekranı için)
+let loadedCarModels = [];
+
+// Araç seçim ekranı için araç modellerini yükle
+async function loadCarModelsForSelection() {
+    console.log('🚗 Araç seçim ekranı için modeller yükleniyor...');
+    console.log('📂 Yüklenecek araç sayısı:', AVAILABLE_CARS.length);
+    
+    loadedCarModels = [];
+    
+    for (let i = 0; i < AVAILABLE_CARS.length; i++) {
+        try {
+            const car = AVAILABLE_CARS[i];
+            console.log(`🔄 ${i + 1}/${AVAILABLE_CARS.length} - ${car.name} yükleniyor...`);
+            console.log(`📍 Dosya yolu: ${car.path}`);
+            
+            const gltf = await new Promise((resolve, reject) => {
+                loader.load(
+                    car.path,
+                    (gltf) => {
+                        console.log(`✅ ${car.name} başarıyla yüklendi`);
+                        resolve(gltf);
+                    },
+                    (progress) => {
+                        console.log(`📈 ${car.name} yükleme ilerlemesi:`, Math.round((progress.loaded / progress.total) * 100) + '%');
+                    },
+                    (error) => {
+                        console.error(`❌ ${car.name} yükleme hatası:`, error);
+                        reject(error);
+                    }
+                );
+            });
+            
+            const carModel = gltf.scene.clone();
+            carModel.scale.set(car.scale, car.scale, car.scale);
+            carModel.position.set(0, 0, 0);
+            
+            // Gölge ayarları
+            carModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            loadedCarModels.push(carModel);
+            console.log(`✅ ${car.name} modeli hazırlandı`);
+            
+        } catch (error) {
+            console.warn(`⚠️ ${AVAILABLE_CARS[i].name} modeli yüklenemedi:`, error);
+            loadedCarModels.push(null);
+        }
+    }
+    
+    console.log('🎯 Araç yükleme tamamlandı. Başarılı:', loadedCarModels.filter(m => m !== null).length);
+    console.log('❌ Başarısız:', loadedCarModels.filter(m => m === null).length);
+}
+
+// 3D araç seçim ekranını oluştur
+function createCarSelectionMenu() {
+    // Ana konteyner
+    const menuContainer = document.createElement('div');
+    menuContainer.id = 'carSelectionMenu';
+    menuContainer.style.position = 'fixed';
+    menuContainer.style.top = '0';
+    menuContainer.style.left = '0';
+    menuContainer.style.width = '100%';
+    menuContainer.style.height = '100%';
+    menuContainer.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+    menuContainer.style.display = 'flex';
+    menuContainer.style.flexDirection = 'column';
+    menuContainer.style.alignItems = 'center';
+    menuContainer.style.justifyContent = 'center';
+    menuContainer.style.zIndex = '2000';
+    menuContainer.style.fontFamily = 'Arial, sans-serif';
+
+    // Başlık
+    const title = document.createElement('h1');
+    title.textContent = '🚗 ARAÇ SEÇİMİ 🚗';
+    title.style.color = '#FFFFFF';
+    title.style.marginBottom = '20px';
+    title.style.fontSize = '48px';
+    title.style.textShadow = '3px 3px 6px rgba(0,0,0,0.8)';
+    title.style.textAlign = 'center';
+    menuContainer.appendChild(title);
+
+    // 3D sahne konteyner
+    const sceneContainer = document.createElement('div');
+    sceneContainer.style.position = 'relative';
+    sceneContainer.style.width = '600px';
+    sceneContainer.style.height = '400px';
+    sceneContainer.style.border = '3px solid #FFD700';
+    sceneContainer.style.borderRadius = '15px';
+    sceneContainer.style.background = 'linear-gradient(45deg, #2c3e50, #3498db)';
+    sceneContainer.style.boxShadow = '0 0 30px rgba(255, 215, 0, 0.5)';
+    sceneContainer.style.marginBottom = '30px';
+    sceneContainer.style.overflow = 'hidden';
+
+    // 3D Canvas
+    carSelectionCanvas = document.createElement('canvas');
+    carSelectionCanvas.style.width = '100%';
+    carSelectionCanvas.style.height = '100%';
+    carSelectionCanvas.style.borderRadius = '12px';
+    sceneContainer.appendChild(carSelectionCanvas);
+
+    // Araç bilgi paneli (3D sahne üzerine overlay)
+    const carInfoPanel = document.createElement('div');
+    carInfoPanel.id = 'carInfoPanel';
+    carInfoPanel.style.position = 'absolute';
+    carInfoPanel.style.top = '10px';
+    carInfoPanel.style.left = '10px';
+    carInfoPanel.style.background = 'rgba(0, 0, 0, 0.8)';
+    carInfoPanel.style.color = '#FFFFFF';
+    carInfoPanel.style.padding = '15px';
+    carInfoPanel.style.borderRadius = '10px';
+    carInfoPanel.style.fontSize = '16px';
+    carInfoPanel.style.minWidth = '200px';
+    carInfoPanel.style.border = '2px solid #FFD700';
+    sceneContainer.appendChild(carInfoPanel);
+
+    menuContainer.appendChild(sceneContainer);
+
+    // Kontrol butonları konteyner
+    const controlsContainer = document.createElement('div');
+    controlsContainer.style.display = 'flex';
+    controlsContainer.style.gap = '20px';
+    controlsContainer.style.alignItems = 'center';
+    controlsContainer.style.marginBottom = '30px';
+
+    // Önceki araç butonu
+    const prevButton = document.createElement('button');
+    prevButton.innerHTML = '⬅️ ÖNCEKİ';
+    prevButton.style.background = 'linear-gradient(45deg, #e74c3c, #c0392b)';
+    prevButton.style.border = 'none';
+    prevButton.style.borderRadius = '15px';
+    prevButton.style.padding = '15px 25px';
+    prevButton.style.fontSize = '18px';
+    prevButton.style.color = '#FFFFFF';
+    prevButton.style.cursor = 'pointer';
+    prevButton.style.fontWeight = 'bold';
+    prevButton.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+    prevButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    prevButton.style.transition = 'all 0.3s ease';
+
+    // Sonraki araç butonu
+    const nextButton = document.createElement('button');
+    nextButton.innerHTML = 'SONRAKİ ➡️';
+    nextButton.style.background = 'linear-gradient(45deg, #3498db, #2980b9)';
+    nextButton.style.border = 'none';
+    nextButton.style.borderRadius = '15px';
+    nextButton.style.padding = '15px 25px';
+    nextButton.style.fontSize = '18px';
+    nextButton.style.color = '#FFFFFF';
+    nextButton.style.cursor = 'pointer';
+    nextButton.style.fontWeight = 'bold';
+    nextButton.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+    nextButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    nextButton.style.transition = 'all 0.3s ease';
+
+    // Araç indeksi gösterge
+    const carIndexDisplay = document.createElement('div');
+    carIndexDisplay.id = 'carIndexDisplay';
+    carIndexDisplay.style.background = 'rgba(255, 255, 255, 0.2)';
+    carIndexDisplay.style.color = '#FFFFFF';
+    carIndexDisplay.style.padding = '10px 20px';
+    carIndexDisplay.style.borderRadius = '20px';
+    carIndexDisplay.style.fontSize = '16px';
+    carIndexDisplay.style.fontWeight = 'bold';
+    carIndexDisplay.style.border = '2px solid #FFD700';
+
+    controlsContainer.appendChild(prevButton);
+    controlsContainer.appendChild(carIndexDisplay);
+    controlsContainer.appendChild(nextButton);
+    menuContainer.appendChild(controlsContainer);
+
+    // Oyunu başlat butonu
+    const startButton = document.createElement('button');
+    startButton.textContent = '🏁 OYUNU BAŞLAT 🏁';
+    startButton.style.background = 'linear-gradient(45deg, #27ae60, #2ecc71)';
+    startButton.style.border = 'none';
+    startButton.style.borderRadius = '25px';
+    startButton.style.padding = '20px 50px';
+    startButton.style.fontSize = '28px';
+    startButton.style.color = '#FFFFFF';
+    startButton.style.cursor = 'pointer';
+    startButton.style.fontWeight = 'bold';
+    startButton.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+    startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
+    startButton.style.transition = 'all 0.3s ease';
+
+    menuContainer.appendChild(startButton);
+
+    // Kontrol talimatları
+    const instructions = document.createElement('div');
+    instructions.style.color = '#CCCCCC';
+    instructions.style.fontSize = '16px';
+    instructions.style.textAlign = 'center';
+    instructions.style.marginTop = '20px';
+    instructions.style.lineHeight = '1.5';
+    instructions.innerHTML = `
+        <p><strong>🎮 Kontroller:</strong></p>
+        <p>← → Ok Tuşları: Araç değiştir | Enter/Space: Başlat</p>
+        <p>Fare ile butonları kullanabilirsiniz</p>
+    `;
+    menuContainer.appendChild(instructions);
+
+    document.body.appendChild(menuContainer);
+
+    // 3D sahneyi başlat
+    init3DCarSelectionScene();
+
+    // Event listener'ları ekle
+    prevButton.addEventListener('click', () => changeSelectedCar(-1));
+    nextButton.addEventListener('click', () => changeSelectedCar(1));
+    startButton.addEventListener('click', startGameWithSelectedCar);
+
+    // Hover efektleri
+    [prevButton, nextButton, startButton].forEach(button => {
+        button.addEventListener('mouseenter', () => {
+            button.style.transform = 'scale(1.1)';
+            button.style.boxShadow = '0 8px 25px rgba(0,0,0,0.5)';
+        });
+        
+        button.addEventListener('mouseleave', () => {
+            button.style.transform = 'scale(1)';
+            button.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+        });
+    });
+
+    // Klavye kontrolleri
+    const keyHandler = (e) => {
+        if (menuContainer.style.display !== 'none') {
+            switch(e.code) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    changeSelectedCar(-1);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    changeSelectedCar(1);
+                    break;
+                case 'Enter':
+                case 'Space':
+                    e.preventDefault();
+                    startGameWithSelectedCar();
+                    break;
+            }
+        }
+    };
+    
+    document.addEventListener('keydown', keyHandler);
+    
+    // Cleanup function
+    menuContainer.cleanupHandler = () => {
+        document.removeEventListener('keydown', keyHandler);
+    };
+
+    // İlk arabayı göster
+    updateCarDisplay();
+}
+
+// 3D araç seçim sahnesini başlat
+function init3DCarSelectionScene() {
+    // Sahne oluştur
+    carSelectionScene = new THREE.Scene();
+    carSelectionScene.background = new THREE.Color(0x1a1a2e);
+
+    // Kamera oluştur
+    carSelectionCamera = new THREE.PerspectiveCamera(50, 600/400, 0.1, 1000);
+    carSelectionCamera.position.set(4, 2, 6);
+    carSelectionCamera.lookAt(0, 0, 0);
+
+    // Renderer oluştur
+    carSelectionRenderer = new THREE.WebGLRenderer({ 
+        canvas: carSelectionCanvas, 
+        antialias: true,
+        alpha: true
+    });
+    carSelectionRenderer.setSize(600, 400);
+    carSelectionRenderer.shadowMap.enabled = true;
+    carSelectionRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    carSelectionRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Işıklandırma
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    carSelectionScene.add(ambientLight);
+
+    // Ana spot ışık
+    const spotLight = new THREE.SpotLight(0xffffff, 1.5);
+    spotLight.position.set(5, 8, 5);
+    spotLight.angle = Math.PI / 4;
+    spotLight.penumbra = 0.3;
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 1024;
+    spotLight.shadow.mapSize.height = 1024;
+    carSelectionScene.add(spotLight);
+
+    // Ek dolgu ışığı
+    const fillLight = new THREE.DirectionalLight(0x4477ff, 0.4);
+    fillLight.position.set(-3, 2, 4);
+    carSelectionScene.add(fillLight);
+
+    // Arka plan için rengarenk ışık
+    const backLight = new THREE.PointLight(0xff6600, 0.5, 20);
+    backLight.position.set(-4, 3, -2);
+    carSelectionScene.add(backLight);
+
+    // Platform (araba altı zemin)
+    const platformGeometry = new THREE.CylinderGeometry(3, 3, 0.1, 32);
+    const platformMaterial = new THREE.MeshLambertMaterial({ 
+        color: 0x2c3e50,
+        transparent: true,
+        opacity: 0.8
+    });
+    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+    platform.position.y = -0.5;
+    platform.receiveShadow = true;
+    carSelectionScene.add(platform);
+
+    // Platform çevresi halka efekti
+    const ringGeometry = new THREE.TorusGeometry(3.2, 0.1, 8, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xFFD700,
+        transparent: true,
+        opacity: 0.7
+    });
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.y = -0.45;
+    ring.rotation.x = Math.PI / 2;
+    carSelectionScene.add(ring);
+
+    // Animasyon döngüsü
+    carSelectionAnimationLoop();
+}
+
+// Araç seçimini değiştir
+function changeSelectedCar(direction) {
+    selectedCarIndex += direction;
+    
+    // Döngüsel seçim
+    if (selectedCarIndex < 0) {
+        selectedCarIndex = AVAILABLE_CARS.length - 1;
+    } else if (selectedCarIndex >= AVAILABLE_CARS.length) {
+        selectedCarIndex = 0;
+    }
+    
+    updateCarDisplay();
+}
+
+// Araç görünümünü güncelle
+function updateCarDisplay() {
+    // Eski arabayı kaldır
+    if (currentDisplayedCar) {
+        carSelectionScene.remove(currentDisplayedCar);
+    }
+    
+    // Yeni arabayı ekle
+    if (loadedCarModels[selectedCarIndex]) {
+        currentDisplayedCar = loadedCarModels[selectedCarIndex].clone();
+        currentDisplayedCar.position.set(0, 0, 0);
+        currentDisplayedCar.rotation.y = 0;
+        carSelectionScene.add(currentDisplayedCar);
+    }
+    
+    // Bilgi panelini güncelle
+    const carInfoPanel = document.getElementById('carInfoPanel');
+    const carIndexDisplay = document.getElementById('carIndexDisplay');
+    
+    if (carInfoPanel) {
+        const car = AVAILABLE_CARS[selectedCarIndex];
+        carInfoPanel.innerHTML = `
+            <h3 style="margin: 0 0 10px 0; color: #FFD700;">${car.name}</h3>
+            <p style="margin: 0; color: #CCCCCC;">${car.description}</p>
+            <br>
+            <div style="color: #00FFFF;">
+                <strong>Özellikler:</strong><br>
+                • Ölçek: ${car.scale}<br>
+                • Model: ${car.path.split('/').pop()}<br>
+                • Durum: ${loadedCarModels[selectedCarIndex] ? '✅ Hazır' : '❌ Yüklenmedi'}
+            </div>
+        `;
+    }
+    
+    if (carIndexDisplay) {
+        carIndexDisplay.textContent = `${selectedCarIndex + 1} / ${AVAILABLE_CARS.length}`;
+    }
+}
+
+// Araç seçim animasyon döngüsü
+function carSelectionAnimationLoop() {
+    // Renderer ve sahne kontrolleri
+    if (!carSelectionRenderer || !carSelectionScene || !carSelectionCamera) {
+        console.warn('⚠️ Araç seçim animasyon döngüsü durduruluyor - eksik objeler');
+        return;
+    }
+    
+    try {
+        // Arabayı döndür
+        if (currentDisplayedCar) {
+            currentDisplayedCar.rotation.y += 0.01;
+            
+            // Hafif yukarı aşağı bobbing efekti
+            currentDisplayedCar.position.y = Math.sin(Date.now() * 0.002) * 0.1;
+        }
+        
+        // Arka plan rengini değiştir (yavaşça)
+        const time = Date.now() * 0.0005;
+        const r = Math.sin(time) * 0.5 + 0.5;
+        const g = Math.sin(time + 2) * 0.5 + 0.5;
+        const b = Math.sin(time + 4) * 0.5 + 0.5;
+        carSelectionScene.background.setRGB(r * 0.1, g * 0.1, b * 0.2);
+        
+        // Render et
+        carSelectionRenderer.render(carSelectionScene, carSelectionCamera);
+        
+        // Bir sonraki frame'i talep et
+        carSelectionAnimationId = requestAnimationFrame(carSelectionAnimationLoop);
+        
+    } catch (error) {
+        console.error('❌ Araç seçim animasyon hatası:', error);
+        // Hata durumunda animasyon döngüsünü durdur
+        if (carSelectionAnimationId) {
+            cancelAnimationFrame(carSelectionAnimationId);
+            carSelectionAnimationId = null;
+        }
+    }
+}
+
+// Seçilen araçla oyunu başlat
+async function startGameWithSelectedCar() {
+    // Seçim menüsünü kapat
+    const menuContainer = document.getElementById('carSelectionMenu');
+    if (menuContainer) {
+        // Cleanup
+        if (menuContainer.cleanupHandler) {
+            menuContainer.cleanupHandler();
+        }
+        menuContainer.style.display = 'none';
+    }
+    
+    // 3D seçim sahnesini temizle
+    cleanup3DCarSelectionScene();
+    
+    // Oyunu başlat
+    gameStarted = true;
+    await startGame();
+}
+
+// 3D araç seçim sahnesini temizle
+function cleanup3DCarSelectionScene() {
+    if (carSelectionAnimationId) {
+        cancelAnimationFrame(carSelectionAnimationId);
+        carSelectionAnimationId = null;
+    }
+    
+    if (carSelectionRenderer) {
+        carSelectionRenderer.dispose();
+        carSelectionRenderer = null;
+    }
+    
+    if (carSelectionScene) {
+        carSelectionScene.clear();
+        carSelectionScene = null;
+    }
+    
+    carSelectionCamera = null;
+    carSelectionCanvas = null;
+    currentDisplayedCar = null;
+    
+    console.log('🧹 3D araç seçim sahnesi temizlendi');
+}
+
+// Ana oyun başlatma fonksiyonunu güncelle
+async function startGame() {
+    scene = new THREE.Scene();
+    const canvas = document.getElementById('gameCanvas');
+    
+    // YOL MODELLERİNİ YÜKLE - YENİ EKLENDİ
+    await loadRoadModels();
+    
+    await loadCarModel();
+    await loadObstacleModels();
+    createObstacles();
+    createCoins(); // Coin'leri oluştur
+
+    // Three.js sahne kurulumu
+    scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
+  
+    // Kamera - FAR PLANE İYİLEŞTİRİLDİ
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); // 1000'den 2000'e artırıldı
+  
+    // Renderer - GÖLGE KALİTESİ İYİLEŞTİRİLDİ
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Yumuşak gölgeler
+    renderer.shadowMap.autoUpdate = true;
+    renderer.setClearColor(MAP_TYPES[0].skyColor); // İlk harita tipi için gökyüzü rengi
+    
+    // GÖLGE KALİTESİ ARTIŞI
+    renderer.shadowMap.width = 4096; // Yüksek çözünürlük gölge
+    renderer.shadowMap.height = 4096;
+  
+    // Işıklar
+    setupLighting();
+    await loadStreetlightModel();
+    
+    // Gece modu bilgisi ve OTOMATIK AY HAREKETİ AKTIFLEŞTIRME
+    if (isNightMode) {
+        console.log('🌙 GECE MODU AKTIF!');
+        console.log('Ay gökyüzünde merkezi konumda (yukarı bakın)');
+        console.log('WASD tuşları ile ayı hareket ettirebilirsiniz (otomatik aktif)');
+        canMoveMoon = true; // Gece modunda otomatik olarak ay hareket modunu aç
+        showMoonControlNotification(); // Kullanıcıya bildirim göster
+    }
+    
+    // İLK MÜZİK BAŞLAT
+    playMapMusic(0);
+    
+    // Pencere boyut değişikliği
+    window.addEventListener('resize', onWindowResize);
+  
+    // Kontroller
+    document.addEventListener('keydown', handleKeyPress);
+  
+    // İlk haritayı oluştur (normal)
+    createRoad(MAP_TYPES[0]);
+  
+    // Araba modelini yükle
+    await loadCarModel();
+  
+    // Engelleri oluştur
+    createObstacles();
+  
+    // Oyun döngüsünü başlat
+    gameLoop();
+}
+
+// SORUN 2: loadRoadModels fonksiyonu eksik - ekleyin
+async function loadRoadModels() {
+    console.log('🛣️ Yol modelleri yükleniyor...');
+    // Basit implementasyon - gerekirse daha detaylı yapılabilir
+    return Promise.resolve();
+}
+
+// SORUN 3: Eksik utility fonksiyonları - ekleyin
+function createCoins() {
+    // Mevcut coin'leri temizle
+    coins.forEach(coin => scene.remove(coin));
+    coins = [];
+
+    // Yeni coin'ler oluştur
+    const coinCount = 20;
+    for (let i = 0; i < coinCount; i++) {
+        const coinGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8);
+        const coinMaterial = new THREE.MeshLambertMaterial({ color: 0xFFD700 });
+        const coin = new THREE.Mesh(coinGeometry, coinMaterial);
+        
+        const lane = Math.floor(Math.random() * 4);
+        const z = 20 + i * 10 + Math.random() * 5;
+        
+        coin.position.set(getXFromLane(lane), 1, z);
+        coin.rotation.x = Math.PI / 2;
+        coin.castShadow = true;
+        
+        coin.userData = {
+            lane: lane,
+            z: z,
+            collected: false
+        };
+        
+        coins.push(coin);
+        scene.add(coin);
+    }
+}
+
+function updateCoins() {
     if (!playerCar) return;
     
-    const carX = getXFromLane(carPosition);
+    coins.forEach((coin, index) => {
+        if (coin.userData.collected) return;
+        
+        // Coin animasyonu
+        coin.rotation.y += 0.05;
+        coin.position.y = 1 + Math.sin(Date.now() * 0.005 + index) * 0.2;
+        
+        // Çarpışma kontrolü
+        const playerBox = new THREE.Box3().setFromObject(playerCar);
+        const coinBox = new THREE.Box3().setFromObject(coin);
+        
+        if (playerBox.intersectsBox(coinBox)) {
+            coin.userData.collected = true;
+            scene.remove(coin);
+            coinCount++;
+            score += 100;
+            console.log(`💰 Coin toplandı! Toplam: ${coinCount}`);
+        }
+        
+        // Geride kalan coin'leri yeniden konumlandır
+        if (coin.position.z < carZ - 30) {
+            const newLane = Math.floor(Math.random() * 4);
+            coin.position.set(getXFromLane(newLane), 1, carZ + 50 + Math.random() * 20);
+            coin.userData.z = coin.position.z;
+            coin.userData.collected = false;
+        }
+    });
+}
+
+function createWeatherSystem(mapType) {
+    console.log(`🌤️ ${mapType.name} haritası için hava durumu oluşturuluyor...`);
+}
+
+function updateWeatherEffects() {
+    // Hava durumu efektlerini güncelle
+}
+
+function switchCameraMode() {
+    currentCameraMode = (currentCameraMode + 1) % 3;
     
-    // Direksiyon görünürlüğünü kontrol et
     if (steeringWheel) {
         steeringWheel.visible = (currentCameraMode === CAMERA_MODES.FIRST_PERSON);
     }
     
-    // 1. şahıs modunda araba gövdesini gizle (cam sorunu çözümü)
-    if (playerCar) {
-        playerCar.traverse((child) => {
-            if (child.isMesh && child !== steeringWheel) {
-                if (currentCameraMode === CAMERA_MODES.FIRST_PERSON) {
-                    // 1. şahıs modunda araç gövdesini görünmez yap
-                    child.visible = false;
-                } else {
-                    // Diğer modlarda araç gövdesini görünür yap
-                    child.visible = true;
-                }
-            }
-        });
-        
-        // Direksiyonu her zaman doğru görünürlükte tut
-        if (steeringWheel) {
-            steeringWheel.traverse((child) => {
-                if (child.isMesh) {
-                    child.visible = (currentCameraMode === CAMERA_MODES.FIRST_PERSON);
-                }
-            });
-        }
-    }
+    console.log(`📷 Kamera modu: ${Object.keys(CAMERA_MODES)[currentCameraMode]}`);
+}
+
+function updateCamera() {
+    if (!playerCar || !camera) return;
+    
+    const carPos = playerCar.position;
     
     switch(currentCameraMode) {
         case CAMERA_MODES.THIRD_PERSON:
-            // 3. şahıs kamera (arkadan takip)
-            camera.position.set(carX, cameraHeight, carZ - cameraDistance);
-            camera.lookAt(carX, 0, carZ + 5);
+            camera.position.set(
+                carPos.x,
+                carPos.y + cameraHeight,
+                carPos.z - cameraDistance
+            );
+            camera.lookAt(carPos.x, carPos.y, carPos.z + 5);
             break;
             
         case CAMERA_MODES.FIRST_PERSON:
-            // 1. şahıs kamera (gerçek araç içi görünümü - araç gövdesi görünmez)
-            const carWorldPosition = new THREE.Vector3();
-            playerCar.getWorldPosition(carWorldPosition);
-            
-            // Kamerayı tam araç içine koy - driver seat pozisyonu
-            camera.position.set(carX - 0.15, carWorldPosition.y + 0.5, carZ + 0.2); // Daha iyi pozisyon
-            camera.lookAt(carX, carWorldPosition.y + 0.4, carZ + 20); // İleriye bak
-            
-            // FOV'u araba içi için ayarla
-            camera.fov = 90; // Daha geniş açı (85'den 90'a)
-            camera.updateProjectionMatrix();
-            
-            // Direksiyon animasyonu (şerit değişiminde)
-            if (steeringWheel) {
-                const targetRotation = (carTargetX - playerCar.position.x) * 0.8;
-                steeringWheel.rotation.z = THREE.MathUtils.lerp(steeringWheel.rotation.z, targetRotation, 0.15);
-            }
+            camera.position.set(
+                carPos.x,
+                carPos.y + 1.2,
+                carPos.z + 0.5
+            );
+            camera.lookAt(carPos.x, carPos.y, carPos.z + 10);
             break;
             
         case CAMERA_MODES.FRONT_VIEW:
-            // Ön görünüm kamera (arabaya önden bakış)
-            camera.position.set(carX, cameraHeight * 0.8, carZ + cameraDistance);
-            camera.lookAt(carX, 0, carZ - 2);
-            
-            // FOV'u normal hale getir
-            camera.fov = 75;
-            camera.updateProjectionMatrix();
+            camera.position.set(
+                carPos.x,
+                carPos.y + 2,
+                carPos.z + 8
+            );
+            camera.lookAt(carPos.x, carPos.y, carPos.z);
             break;
     }
-    
-    // 3. şahıs ve ön görünümde FOV'u normal tut
-    if (currentCameraMode !== CAMERA_MODES.FIRST_PERSON) {
-        camera.fov = 75;
-        camera.updateProjectionMatrix();
-    }
 }
 
-// Kamera modu değiştirme
-function switchCameraMode() {
-    currentCameraMode = (currentCameraMode + 1) % Object.keys(CAMERA_MODES).length;
-    
-    // Kamera modu bildirimini göster
-    showCameraModeNotification();
-}
-
-// Kamera modu bildirimi
-function showCameraModeNotification() {
-    let notification = document.getElementById('cameraNotification');
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.id = 'cameraNotification';
-        notification.style.position = 'absolute';
-        notification.style.top = '20%';
-        notification.style.left = '50%';
-        notification.style.transform = 'translate(-50%, -50%)';
-        notification.style.background = 'rgba(0, 0, 0, 0.8)';
-        notification.style.color = '#FFFFFF';
-        notification.style.padding = '15px 25px';
-        notification.style.borderRadius = '10px';
-        notification.style.fontSize = '18px';
-        notification.style.textAlign = 'center';
-        notification.style.zIndex = '1000';
-        notification.style.display = 'none';
-        notification.style.border = '2px solid #00FFFF';
-        notification.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.5)';
-        document.body.appendChild(notification);
-    }
-    
-    let modeText = '';
-    switch(currentCameraMode) {
-        case CAMERA_MODES.THIRD_PERSON:
-            modeText = '3. Şahıs Kamera';
-            break;
-        case CAMERA_MODES.FIRST_PERSON:
-            modeText = '1. Şahıs Kamera<br><small>(Araç gövdesi gizli - Net görüş)</small>';
-            break;
-        case CAMERA_MODES.FRONT_VIEW:
-            modeText = 'Ön Görünüm Kamera';
-            break;
-    }
-    
-    notification.innerHTML = `Kamera: ${modeText}`;
-    notification.style.display = 'block';
-    
-    // 2 saniye sonra bildirim kaybolsun
-    setTimeout(() => {
-        notification.style.display = 'none';
-    }, 2000);
-}
-
-// Ay kontrol bildirimi
-function showMoonControlNotification() {
-    let notification = document.getElementById('moonControlNotification');
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.id = 'moonControlNotification';
-        notification.style.position = 'absolute';
-        notification.style.top = '30%';
-        notification.style.left = '50%';
-        notification.style.transform = 'translate(-50%, -50%)';
-        notification.style.background = 'rgba(0, 0, 100, 0.9)';
-        notification.style.color = '#FFFFFF';
-        notification.style.padding = '20px 30px';
-        notification.style.borderRadius = '15px';
-        notification.style.fontSize = '18px';
-        notification.style.textAlign = 'center';
-        notification.style.zIndex = '1000';
-        notification.style.display = 'none';
-        notification.style.border = '3px solid #FFFF00';
-        notification.style.boxShadow = '0 0 25px rgba(255, 255, 0, 0.7)';
-        notification.style.lineHeight = '1.5';
-        document.body.appendChild(notification);
-    }
-    
-    if (canMoveMoon) {
-        notification.innerHTML = `
-            <strong>🌙 AY HAREKET MODU AÇIK!</strong><br>
-            <br>
-            <span style="color: #00FFFF;">WASD Tuşları:</span> Ayı hareket ettir<br>
-            <span style="color: #FFD700;">← → Ok Tuşları:</span> Araç kontrol (değişmez)<br>
-            <span style="color: #FF9999;">M Tuşu:</span> Modu kapat
-        `;
-    } else {
-        notification.innerHTML = `
-            <strong>🌙 AY HAREKET MODU KAPALI</strong><br>
-            <br>
-            <span style="color: #FFD700;">M tuşuna basarak ayı hareket ettirebilirsiniz</span><br>
-            <span style="color: #CCCCCC;">WASD ile ay, ← → ile araç kontrolü</span>
-        `;
-    }
-    
-    notification.style.display = 'block';
-    
-    // 4 saniye sonra bildirim kaybolsun
-    setTimeout(() => {
-        notification.style.display = 'none';
-    }, 4000);
-}
-
-// Gece modunda ay durumu göstergesi
-function createMoonStatusIndicator() {
-    if (!isNightMode) return;
-    
-    let indicator = document.getElementById('moonStatus');
-    if (!indicator) {
-        indicator = document.createElement('div');
-        indicator.id = 'moonStatus';
-        indicator.style.position = 'absolute';
-        indicator.style.top = '20px';
-        indicator.style.right = '20px';
-        indicator.style.background = 'rgba(0, 0, 50, 0.8)';
-        indicator.style.color = '#FFFFFF';
-        indicator.style.padding = '10px 15px';
-        indicator.style.borderRadius = '10px';
-        indicator.style.fontSize = '14px';
-        indicator.style.zIndex = '100';
-        indicator.style.border = '2px solid #FFFF00';
-        indicator.style.fontFamily = 'Arial, sans-serif';
-        document.body.appendChild(indicator);
-    }
-    
-    indicator.innerHTML = `
-        🌙 Gece Modu<br>
-        Ay Hareket: ${canMoveMoon ? '<span style="color: #00FF00;">AÇIK</span>' : '<span style="color: #FF6666;">KAPALI</span>'}
-    `;
-    
-    indicator.style.display = 'block';
-}
-
-// Müzik kontrol bildirimi
 function showMusicNotification() {
-    let notification = document.getElementById('musicNotification');
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.id = 'musicNotification';
-        notification.style.position = 'absolute';
-        notification.style.top = '30%';
-        notification.style.right = '20px';
-        notification.style.background = 'rgba(0, 100, 0, 0.9)';
-        notification.style.color = '#FFFFFF';
-        notification.style.padding = '15px 20px';
-        notification.style.borderRadius = '10px';
-        notification.style.fontSize = '16px';
-        notification.style.textAlign = 'center';
-        notification.style.zIndex = '1000';
-        notification.style.display = 'none';
-        notification.style.border = '2px solid #00FF00';
-        notification.style.boxShadow = '0 0 20px rgba(0, 255, 0, 0.5)';
-        document.body.appendChild(notification);
-    }
-    
-    notification.innerHTML = `🎵 Müzik: ${musicEnabled ? '<span style="color: #00FF00;">AÇIK</span>' : '<span style="color: #FF6666;">KAPALI</span>'}`;
-    notification.style.display = 'block';
-    
-    // 2 saniye sonra bildirim kaybolsun
-    setTimeout(() => {
-        notification.style.display = 'none';
-    }, 2000);
+    console.log(`🎵 Müzik: ${musicEnabled ? 'AÇIK' : 'KAPALI'}`);
 }
 
-// Gece modunda ay durumu göstergesi
-function createMoonStatusIndicator() {
+function showMoonControlNotification() {
     if (!isNightMode) return;
-    
-    let indicator = document.getElementById('moonStatus');
-    if (!indicator) {
-        indicator = document.createElement('div');
-        indicator.id = 'moonStatus';
-        indicator.style.position = 'absolute';
-        indicator.style.top = '20px';
-        indicator.style.right = '20px';
-        indicator.style.background = 'rgba(0, 0, 50, 0.8)';
-        indicator.style.color = '#FFFFFF';
-        indicator.style.padding = '10px 15px';
-        indicator.style.borderRadius = '10px';
-        indicator.style.fontSize = '14px';
-        indicator.style.zIndex = '100';
-        indicator.style.border = '2px solid #FFFF00';
-        indicator.style.fontFamily = 'Arial, sans-serif';
-        document.body.appendChild(indicator);
-    }
-    
-    indicator.innerHTML = `
-        🌙 Gece Modu<br>
-        Ay Hareket: ${canMoveMoon ? '<span style="color: #00FF00;">AÇIK</span>' : '<span style="color: #FF6666;">KAPALI</span>'}
-    `;
-    
-    indicator.style.display = 'block';
+    console.log(`🌙 Ay hareket modu: ${canMoveMoon ? 'AÇIK' : 'KAPALI'}`);
 }
 
-// YOL MODELLERİ SİSTEMİ - YENİ EKLENDİ
-let loadedRoadModels = {
-    desert: null, // Çöl yolu modeli
-    normal: null  // Normal yol (şimdilik null, geometry kullanıyor)
-};
-
-// Çöl yolu GLB dosya yolları (farklı isimler denenir)
-const DESERT_ROAD_PATHS = [
-    'graphics_three/assets/desert_road.glb',
-    'graphics_three/assets/desert.glb', 
-    'graphics_three/assets/col_yolu.glb',
-    'graphics_three/textures/desertroad.glb' // Mevcut dosya
-];
-
-// YOL MODELİ YÜKLEME FONKSİYONU
-async function loadRoadModels() {
-    console.log('🛣️ Yol modelleri yükleniyor...');
+// SORUN 4: Ana fonksiyon düzeltmeleri
+// Sayfa yüklendiğinde çalışacak fonksiyonu düzeltin
+window.addEventListener('load', async () => {
+    // Body stilini ayarla
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
     
-    // Çöl yolu modelini yükle
-    for (const path of DESERT_ROAD_PATHS) {
+    // Canvas ve UI oluştur
+    createCanvas();
+    createGameUI();
+    
+    try {
+        // ARAÇ MODELLERİNİ YÜKLE
+        await loadCarModelsForSelection();
+        
+        // Zaman seçim menüsünü göster
+        createDayNightSelectionMenu();
+        
+        console.log('✅ 3D WebGL Araba Yarış Simülasyonu yüklendi!');
+        console.log('Önce zaman seçin, sonra araç seçin ve oyunu başlatın!');
+        
+    } catch (error) {
+        console.error('❌ Oyun yüklenirken hata oluştu:', error);
+        
+        // Hata durumunda kullanıcıya bilgi ver
+        document.body.innerHTML = `
+            <div style="
+                position: fixed; 
+                top: 50%; 
+                left: 50%; 
+                transform: translate(-50%, -50%);
+                background: rgba(255, 0, 0, 0.9);
+                color: white;
+                padding: 30px;
+                border-radius: 15px;
+                text-align: center;
+                font-family: Arial, sans-serif;
+                z-index: 9999;
+            ">
+                <h2>🚗 Oyun Yükleme Hatası</h2>
+                <p>Oyun dosyaları yüklenirken bir hata oluştu.</p>
+                <p><strong>Hata:</strong> ${error.message}</p>
+                <p><small>Lütfen sayfayı yenileyin veya konsolu kontrol edin.</small></p>
+                <button onclick="location.reload()" style="
+                    background: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    margin-top: 15px;
+                ">Sayfayı Yenile</button>
+            </div>
+        `;
+    }
+});
+
+// SORUN 5: loadCarModelsForSelection fonksiyonunu debug ile güçlendirin
+async function loadCarModelsForSelection() {
+    console.log('🚗 Araç seçim ekranı için modeller yükleniyor...');
+    console.log('📂 Yüklenecek araç sayısı:', AVAILABLE_CARS.length);
+    
+    loadedCarModels = [];
+    
+    for (let i = 0; i < AVAILABLE_CARS.length; i++) {
         try {
+            const car = AVAILABLE_CARS[i];
+            console.log(`🔄 ${i + 1}/${AVAILABLE_CARS.length} - ${car.name} yükleniyor...`);
+            console.log(`📍 Dosya yolu: ${car.path}`);
+            
             const gltf = await new Promise((resolve, reject) => {
-                loader.load(path, resolve, undefined, reject);
+                loader.load(
+                    car.path,
+                    (gltf) => {
+                        console.log(`✅ ${car.name} başarıyla yüklendi`);
+                        resolve(gltf);
+                    },
+                    (progress) => {
+                        console.log(`📈 ${car.name} yükleme ilerlemesi:`, Math.round((progress.loaded / progress.total) * 100) + '%');
+                    },
+                    (error) => {
+                        console.error(`❌ ${car.name} yükleme hatası:`, error);
+                        reject(error);
+                    }
+                );
             });
             
-            loadedRoadModels.desert = gltf.scene;
-            loadedRoadModels.desert.scale.set(1, 1, 1);
-            loadedRoadModels.desert.traverse(child => {
+            const carModel = gltf.scene.clone();
+            carModel.scale.set(car.scale, car.scale, car.scale);
+            carModel.position.set(0, 0, 0);
+            
+            // Gölge ayarları
+            carModel.traverse((child) => {
                 if (child.isMesh) {
+                    child.castShadow = true;
                     child.receiveShadow = true;
-                    child.castShadow = false; // Yol gölge atmasın
                 }
             });
             
-            console.log(`✅ Çöl yolu modeli yüklendi: ${path}`);
-            break; // İlk başarılı yüklenen modeli kullan
+            loadedCarModels.push(carModel);
+            console.log(`✅ ${car.name} modeli hazırlandı`);
             
         } catch (error) {
-            console.warn(`⚠️ Çöl yolu modeli yüklenemedi: ${path}`);
+            console.warn(`⚠️ ${AVAILABLE_CARS[i].name} modeli yüklenemedi:`, error);
+            loadedCarModels.push(null);
         }
     }
     
-    if (!loadedRoadModels.desert) {
-        console.warn('❌ Hiçbir çöl yolu modeli bulunamadı. Normal geometrik yol kullanılacak.');
-        console.info('💡 Çöl yolu için GLB dosyası eklemek isterseniz:');
-        console.info('   📁 graphics_three/assets/ klasörüne aşağıdaki isimlerden biriyle ekleyin:');
-        console.info('   🔸 desert_road.glb');
-        console.info('   🔸 desert.glb'); 
-        console.info('   🔸 col_yolu.glb');
-        console.info('   🔸 13f61e6a113e41deaeb4b7a33adf5d72.glb (mevcut dosya test edildi)');
-        console.info('   ✨ Dosya eklendikten sonra sayfa yenilenince otomatik yüklenecektir.');
-    } else {
-        console.log('🎉 Çöl yolu GLB modeli başarıyla yüklendi! Çöl haritasında özel yol görünecek.');
+    console.log('🎯 Araç yükleme tamamlandı. Başarılı:', loadedCarModels.filter(m => m !== null).length);
+    console.log('❌ Başarısız:', loadedCarModels.filter(m => m === null).length);
+}
+
+// SORUN 6: carSelectionAnimationLoop fonksiyonunu güvenli hale getirin
+function carSelectionAnimationLoop() {
+    // Renderer ve sahne kontrolleri
+    if (!carSelectionRenderer || !carSelectionScene || !carSelectionCamera) {
+        console.warn('⚠️ Araç seçim animasyon döngüsü durduruluyor - eksik objeler');
+        return;
+    }
+    
+    try {
+        // Arabayı döndür
+        if (currentDisplayedCar) {
+            currentDisplayedCar.rotation.y += 0.01;
+            
+            // Hafif yukarı aşağı bobbing efekti
+            currentDisplayedCar.position.y = Math.sin(Date.now() * 0.002) * 0.1;
+        }
+        
+        // Arka plan rengini değiştir (yavaşça)
+        const time = Date.now() * 0.0005;
+        const r = Math.sin(time) * 0.5 + 0.5;
+        const g = Math.sin(time + 2) * 0.5 + 0.5;
+        const b = Math.sin(time + 4) * 0.5 + 0.5;
+        carSelectionScene.background.setRGB(r * 0.1, g * 0.1, b * 0.2);
+        
+        // Render et
+        carSelectionRenderer.render(carSelectionScene, carSelectionCamera);
+        
+        // Bir sonraki frame'i talep et
+        carSelectionAnimationId = requestAnimationFrame(carSelectionAnimationLoop);
+        
+    } catch (error) {
+        console.error('❌ Araç seçim animasyon hatası:', error);
+        // Hata durumunda animasyon döngüsünü durdur
+        if (carSelectionAnimationId) {
+            cancelAnimationFrame(carSelectionAnimationId);
+            carSelectionAnimationId = null;
+        }
     }
 }
