@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D WebGL Araba Yarış Simülasyonu - Geliştirilmiş Versiyon</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        /* Loading screen */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-size: 24px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 15px;
+            border: 2px solid #00ff00;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+            z-index: 1000;
+        }
+        
+        /* Neon text effect */
+        .neon-text {
+            text-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            #loading {
+                font-size: 18px;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="neon-text">
+        🚗 3D Araba Yarış Oyunu Yükleniyor... 🚗
+        <br><br>
+        <small>Geliştirilmiş özellikler:</small>
+        <br>
+        <small>🌙 Gece/Gündüz modu</small>
+        <br>
+        <small>🎵 Dinamik müzik sistemi</small>
+        <br>
+        <small>💡 Geliştirilmiş farlar</small>
+        <br>
+        <small>🌟 Yüksek kalite gölgeler</small>
+    </div>
+
+    <!-- Three.js kütüphaneleri -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/GLTFLoader.js"></script>
+    
+    <!-- Oyun kodu -->
+    <script src="game.js"></script>
+    
+    <script>
+        // Loading ekranını gizle
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loading = document.getElementById('loading');
+                if (loading) {
+                    loading.style.display = 'none';
+                }
+            }, 2000);
+        });
+        
+        // Hata yakalama
+        window.addEventListener('error', (e) => {
+            console.error('Oyun hatası:', e.error);
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.innerHTML = `
+                    <div style="color: #ff6666;">
+                        ❌ Oyun yüklenirken hata oluştu!<br>
+                        <small>Konsolu kontrol edin veya sayfayı yenileyin.</small>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html> 

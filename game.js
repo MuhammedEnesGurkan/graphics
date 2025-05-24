@@ -6,6 +6,184 @@
 // Global değişkenler
 // Harita tipleri - en başta global değişkenlerle birlikte tanımlanacak
 
+// MÜZİK SİSTEMİ - İYİLEŞTİRİLDİ
+let currentMusic = null;
+let musicEnabled = true;
+const MUSIC_VOLUME = 0.7; // 0.3'ten 0.7'ye artırıldı - daha yüksek ses
+
+// Harita müzikleri - basit müzikler (daha sonra değiştirilebilir)
+const MAP_MUSIC = {
+    0: 'graphics_three/musics/default.mp3', // Normal harita için basit ton
+    1: 'graphics_three/musics/forgottendeserts.mp3', // Çöl haritası için
+    2: 'graphics_three/musics/snow.mp3', // Karlı harita için (şimdilik aynı müzik) 
+    3: 'graphics_three/musics/spring.mp3'  // Bahar haritası için (şimdilik aynı müzik)
+};
+
+// Müzik kontrol fonksiyonları - MP3 DESTEĞI İLE YENİDEN YAZILDI
+function playMapMusic(mapIndex) {
+    if (!musicEnabled) return;
+    
+    // ANINDA MÜZİK DEĞİŞİMİ - MEVCUT MÜZİĞİ HEMEN DURDUR
+    if (currentMusic) {
+        try {
+            currentMusic.pause();
+            currentMusic.currentTime = 0;
+            currentMusic.removeEventListener('loadeddata', null);
+            currentMusic.removeEventListener('canplay', null);
+            currentMusic.removeEventListener('error', null);
+            currentMusic.removeEventListener('progress', null);
+            currentMusic = null; // Referansı temizle
+        } catch (e) {
+            console.warn('Müzik durdurulurken hata:', e);
+        }
+    }
+    
+    // Yeni müziği başlat
+    const musicPath = MAP_MUSIC[mapIndex];
+    if (!musicPath) {
+        console.warn('Bu harita için müzik bulunamadı:', mapIndex);
+        return;
+    }
+    
+    console.log(`🎵 ANINDA MÜZİK DEĞİŞİMİ: ${musicPath} (Harita: ${MAP_TYPES[mapIndex].name})`);
+    
+    try {
+        currentMusic = new Audio();
+        currentMusic.src = musicPath;
+        currentMusic.volume = MUSIC_VOLUME;
+        currentMusic.loop = true;
+        currentMusic.preload = 'auto';
+        
+        // Hemen çalmaya başla
+        const playImmediately = () => {
+            console.log(`✅ Yeni müzik başladı: ${MAP_TYPES[mapIndex].name}`);
+            if (musicEnabled) {
+                currentMusic.play().catch(e => {
+                    console.warn('⚠️ Müzik çalınamadı:', e.message);
+                    if (e.name === 'NotAllowedError') {
+                        console.log('💡 Tarayıcı müzik çalmak için kullanıcı etkileşimi bekliyor.');
+                        showMusicInteractionPrompt();
+                    }
+                });
+            }
+        };
+        
+        // Farklı olaylarla hemen çalmaya çalış
+        currentMusic.addEventListener('loadeddata', playImmediately);
+        currentMusic.addEventListener('canplay', playImmediately);
+        
+        // Hata yakalama - detaylı
+        currentMusic.addEventListener('error', (e) => {
+            console.error('❌ Müzik yükleme hatası:');
+            console.error('Dosya:', musicPath);
+            console.error('Hata kodu:', currentMusic.error?.code);
+            console.error('Hata mesajı:', currentMusic.error?.message);
+            
+            // Hata kodlarını açıkla
+            switch(currentMusic.error?.code) {
+                case 1:
+                    console.error('MEDIA_ERR_ABORTED: Kullanıcı işlemi iptal etti');
+                    break;
+                case 2:
+                    console.error('MEDIA_ERR_NETWORK: Ağ hatası');
+                    break;
+                case 3:
+                    console.error('MEDIA_ERR_DECODE: Dosya format hatası');
+                    break;
+                case 4:
+                    console.error('MEDIA_ERR_SRC_NOT_SUPPORTED: Dosya bulunamadı veya desteklenmiyor');
+                    break;
+            }
+        });
+        
+        // Müziği yükle ve hemen çalmaya başla
+        currentMusic.load();
+        
+        // Backup: 100ms sonra da çalmaya çalış
+        setTimeout(() => {
+            if (currentMusic && musicEnabled && currentMusic.paused) {
+                currentMusic.play().catch(e => {
+                    // Sessiz hata, zaten üstte loglandı
+                });
+            }
+        }, 100);
+        
+    } catch (error) {
+        console.error('💥 Müzik oluşturma hatası:', error);
+    }
+}
+
+function toggleMusic() {
+    musicEnabled = !musicEnabled;
+    
+    if (currentMusic) {
+        if (musicEnabled) {
+            // Kullanıcı etkileşimi ile müziği başlat
+            currentMusic.play().catch(e => {
+                console.warn('⚠️ Müzik çalınamadı:', e.message);
+                if (e.name === 'NotAllowedError') {
+                    console.log('💡 Tarayıcı güvenlik nedeniyle müzik çalmayı engelledi. Sayfada bir tıklama yapın.');
+                    // Müzik çalmak için sayfa etkileşimi gerekli
+                    showMusicInteractionPrompt();
+                }
+            });
+        } else {
+            currentMusic.pause();
+        }
+    }
+    
+    console.log(`🎵 Müzik ${musicEnabled ? 'açıldı' : 'kapatıldı'}`);
+    return musicEnabled;
+}
+
+// Müzik etkileşimi istemi
+function showMusicInteractionPrompt() {
+    let prompt = document.getElementById('musicPrompt');
+    if (!prompt) {
+        prompt = document.createElement('div');
+        prompt.id = 'musicPrompt';
+        prompt.style.position = 'absolute';
+        prompt.style.top = '40%';
+        prompt.style.left = '50%';
+        prompt.style.transform = 'translate(-50%, -50%)';
+        prompt.style.background = 'rgba(255, 165, 0, 0.9)';
+        prompt.style.color = '#FFFFFF';
+        prompt.style.padding = '20px 30px';
+        prompt.style.borderRadius = '15px';
+        prompt.style.fontSize = '18px';
+        prompt.style.textAlign = 'center';
+        prompt.style.zIndex = '1001';
+        prompt.style.border = '3px solid #FFD700';
+        prompt.style.boxShadow = '0 0 25px rgba(255, 165, 0, 0.7)';
+        prompt.style.cursor = 'pointer';
+        document.body.appendChild(prompt);
+    }
+    
+    prompt.innerHTML = `
+        🎵 Müzik İçin Tıklayın<br>
+        <small>Tarayıcı güvenliği nedeniyle tıklama gerekli</small>
+    `;
+    
+    prompt.style.display = 'block';
+    
+    // Tıklama ile müziği başlat
+    prompt.addEventListener('click', () => {
+        if (currentMusic && musicEnabled) {
+            currentMusic.play().then(() => {
+                console.log('🎵 Müzik kullanıcı etkileşimi ile başlatıldı');
+                prompt.style.display = 'none';
+            }).catch(e => {
+                console.error('Müzik hala çalamıyor:', e);
+            });
+        }
+    });
+    
+    // 10 saniye sonra otomatik gizle
+    setTimeout(() => {
+        prompt.style.display = 'none';
+    }, 10000);
+}
+
 const OBSTACLE_GLB_MODELS = [
     'graphics_three/assets/mater.glb',
     'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
@@ -216,6 +394,10 @@ async function loadStreetlightModel() {
 async function startGame() {
     scene = new THREE.Scene();
     const canvas = document.getElementById('gameCanvas');
+    
+    // YOL MODELLERİNİ YÜKLE - YENİ EKLENDİ
+    await loadRoadModels();
+    
     await loadCarModel();
     await loadObstacleModels();
     createObstacles();
@@ -224,26 +406,36 @@ async function startGame() {
     // Three.js sahne kurulumu
     scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
   
-    // Kamera
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Kamera - FAR PLANE İYİLEŞTİRİLDİ
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); // 1000'den 2000'e artırıldı
   
-    // Renderer
+    // Renderer - GÖLGE KALİTESİ İYİLEŞTİRİLDİ
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Yumuşak gölgeler
+    renderer.shadowMap.autoUpdate = true;
     renderer.setClearColor(MAP_TYPES[0].skyColor); // İlk harita tipi için gökyüzü rengi
+    
+    // GÖLGE KALİTESİ ARTIŞI
+    renderer.shadowMap.width = 4096; // Yüksek çözünürlük gölge
+    renderer.shadowMap.height = 4096;
   
     // Işıklar
     setupLighting();
     await loadStreetlightModel();
     
-    // Gece modu bilgisi
+    // Gece modu bilgisi ve OTOMATIK AY HAREKETİ AKTIFLEŞTIRME
     if (isNightMode) {
         console.log('🌙 GECE MODU AKTIF!');
         console.log('Ay gökyüzünde merkezi konumda (yukarı bakın)');
-        console.log('M tuşu ile ayı hareket ettirebilirsiniz');
+        console.log('WASD tuşları ile ayı hareket ettirebilirsiniz (otomatik aktif)');
+        canMoveMoon = true; // Gece modunda otomatik olarak ay hareket modunu aç
+        showMoonControlNotification(); // Kullanıcıya bildirim göster
     }
+    
+    // İLK MÜZİK BAŞLAT
+    playMapMusic(0);
     
     // Pencere boyut değişikliği
     window.addEventListener('resize', onWindowResize);
@@ -624,22 +816,69 @@ async function loadCarModel() {
         nitroRight.position.set(0.18, 0.22, -1.05);
         playerCar.add(nitroRight);
 
-        // Araba farları oluştur
-        const headlightLeft = new THREE.SpotLight(0xffffff, 1, 30, Math.PI / 6, 0.5);
-        headlightLeft.position.set(-0.5, 0.5, 1.5);
-        headlightLeft.target.position.set(-1, 0, 5);
+        // Araba farları oluştur - TAMAMEN İYİLEŞTİRİLDİ
+        const headlightLeft = new THREE.SpotLight(0xffffff, isNightMode ? 2.0 : 1.2, 15, Math.PI / 6, 0.4);
+        headlightLeft.position.set(-0.3, 0.5, 1.0); // Daha yüksek ve içerde
         headlightLeft.castShadow = true;
+        headlightLeft.shadow.mapSize.width = 512;
+        headlightLeft.shadow.mapSize.height = 512;
+        headlightLeft.shadow.camera.near = 0.2;
+        headlightLeft.shadow.camera.far = 15;
+        
+        // Sol far hedefi
+        const leftTarget = new THREE.Object3D();
+        leftTarget.position.set(-1, 0, 15); // İleri ve biraz sola
+        playerCar.add(leftTarget);
+        headlightLeft.target = leftTarget;
+        
         playerCar.add(headlightLeft);
-        playerCar.add(headlightLeft.target);
 
-        const headlightRight = new THREE.SpotLight(0xffffff, 1, 30, Math.PI / 6, 0.5);
-        headlightRight.position.set(0.5, 0.5, 1.5);
-        headlightRight.target.position.set(1, 0, 5);
+        const headlightRight = new THREE.SpotLight(0xffffff, isNightMode ? 2.0 : 1.2, 15, Math.PI / 6, 0.4);
+        headlightRight.position.set(0.3, 0.5, 1.0); // Daha yüksek ve içerde
         headlightRight.castShadow = true;
+        headlightRight.shadow.mapSize.width = 512;
+        headlightRight.shadow.mapSize.height = 512;
+        headlightRight.shadow.camera.near = 0.2;
+        headlightRight.shadow.camera.far = 15;
+        
+        // Sağ far hedefi
+        const rightTarget = new THREE.Object3D();
+        rightTarget.position.set(1, 0, 15); // İleri ve biraz sağa
+        playerCar.add(rightTarget);
+        headlightRight.target = rightTarget;
+        
         playerCar.add(headlightRight);
-        playerCar.add(headlightRight.target);
 
         carHeadlights.push(headlightLeft, headlightRight);
+
+        // Far görsel efektleri - İYİLEŞTİRİLDİ
+        const headlightGlowLeft = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16), // Daha büyük ve detaylı
+            new THREE.MeshBasicMaterial({ 
+                color: 0xffffcc, 
+                transparent: true, 
+                opacity: isNightMode ? 1.0 : 0.7 // Daha belirgin
+            })
+        );
+        headlightGlowLeft.position.set(-0.3, 0.5, 1.0);
+        playerCar.add(headlightGlowLeft);
+
+        const headlightGlowRight = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16), // Daha büyük ve detaylı
+            new THREE.MeshBasicMaterial({ 
+                color: 0xffffcc, 
+                transparent: true, 
+                opacity: isNightMode ? 1.0 : 0.7 // Daha belirgin
+            })
+        );
+        headlightGlowRight.position.set(0.3, 0.5, 1.0);
+        playerCar.add(headlightGlowRight);
+        
+        // Far debug bilgisi
+        console.log('🚗 Araba farları oluşturuldu:');
+        console.log('Sol far parlaklığı:', headlightLeft.intensity);
+        console.log('Sağ far parlaklığı:', headlightRight.intensity);
+        console.log('Far menzili:', headlightLeft.distance);
 
         // Nitro ışıkları oluştur
         const nitroLightLeft = new THREE.PointLight(0xff4400, 0, 8);
@@ -788,33 +1027,60 @@ function createRoad(mapType = MAP_TYPES[0]) {
   const ROAD_WIDTH = 8;
   const ROAD_LENGTH = 200; // Daha uzun yol
 
-  // Ana yol segmentleri
-  const roadGeometry = new THREE.PlaneGeometry(ROAD_WIDTH, 4);
-  const roadMaterial = new THREE.MeshLambertMaterial({ color: mapType.roadColor });
+  // ÇÖL YOLU İÇİN GLB MODEL KONTROLÜ - YENİ EKLENDİ
+  if (mapType.name === "Çöl" && loadedRoadModels.desert) {
+    console.log('🏜️ Çöl yolu GLB modeli kullanılıyor...');
+    
+    // Çöl yolu segmentlerini GLB modeli ile oluştur
+    const segmentCount = Math.floor(ROAD_LENGTH / 4); // Her 4 birimde bir segment
+    
+    for (let i = -5; i < segmentCount; i++) {
+      const roadSegment = loadedRoadModels.desert.clone();
+      roadSegment.position.set(0, 0, i * 4);
+      roadSegment.scale.set(1, 1, 1);
+      
+      // Rastgele rotasyon ekle (çeşitlilik için)
+      if (Math.random() > 0.7) {
+        roadSegment.rotation.y = (Math.random() - 0.5) * 0.2; // Hafif rotasyon
+      }
+      
+      roadGroup.add(roadSegment);
+    }
+    
+    console.log(`✅ ${segmentCount} adet çöl yolu segmenti oluşturuldu`);
+    
+  } else {
+    // Normal geometrik yol oluştur (diğer haritalar için)
+    console.log('🛣️ Geometrik yol oluşturuluyor...');
+    
+    // Ana yol segmentleri
+    const roadGeometry = new THREE.PlaneGeometry(ROAD_WIDTH, 4);
+    const roadMaterial = new THREE.MeshLambertMaterial({ color: mapType.roadColor });
 
-  // -20'den 180'e kadar (toplam 200 birim) yol segmentleri oluştur
-  for (let i = -20; i < ROAD_LENGTH; i++) {
-    const roadSegment = new THREE.Mesh(roadGeometry, roadMaterial);
-    roadSegment.rotation.x = -Math.PI / 2;
-    roadSegment.position.set(0, 0.01, i * 4);
-    roadSegment.receiveShadow = true;
-    roadGroup.add(roadSegment);
+    // -20'den 180'e kadar (toplam 200 birim) yol segmentleri oluştur
+    for (let i = -20; i < ROAD_LENGTH; i++) {
+      const roadSegment = new THREE.Mesh(roadGeometry, roadMaterial);
+      roadSegment.rotation.x = -Math.PI / 2;
+      roadSegment.position.set(0, 0.01, i * 4);
+      roadSegment.receiveShadow = true;
+      roadGroup.add(roadSegment);
 
-    // Şerit çizgileri
-    if (i % 2 === 0) {
-      for (let lane = 1; lane < 4; lane++) {
-        const lineGeo = new THREE.BoxGeometry(0.1, 0.01, 1.5);
-        const lineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-        const line = new THREE.Mesh(lineGeo, lineMat);
-        line.rotation.x = -Math.PI / 2;
-        // getXFromLane fonksiyonunu kullanarak şerit konumlarını belirle
-        line.position.set(getXFromLane(lane), 0.02, i * 4);
-        roadGroup.add(line);
+      // Şerit çizgileri (sadece çöl haritası değilse)
+      if (i % 2 === 0) {
+        for (let lane = 1; lane < 4; lane++) {
+          const lineGeo = new THREE.BoxGeometry(0.1, 0.01, 1.5);
+          const lineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+          const line = new THREE.Mesh(lineGeo, lineMat);
+          line.rotation.x = -Math.PI / 2;
+          // getXFromLane fonksiyonunu kullanarak şerit konumlarını belirle
+          line.position.set(getXFromLane(lane), 0.02, i * 4);
+          roadGroup.add(line);
+        }
       }
     }
   }
 
-  // Çim kenarları (yolun her iki tarafında)
+  // Çim kenarları (yolun her iki tarafında) - tüm haritalar için
   const grassGeo = new THREE.PlaneGeometry(100, 400);
   const grassMat = new THREE.MeshLambertMaterial({ color: mapType.grassColor });
 
@@ -1064,7 +1330,7 @@ function handleKeyPress(event) {
             case 'KeyW':
                 moonObject.position.y += 5;
                 updateMoonPosition();
-                return;
+                return; // Return kullanarak diğer kontrollerin çalışmasını engelleme
             case 'KeyS':
                 moonObject.position.y = Math.max(20, moonObject.position.y - 5);
                 updateMoonPosition();
@@ -1077,23 +1343,8 @@ function handleKeyPress(event) {
                 moonObject.position.x += 5;
                 updateMoonPosition();
                 return;
-            case 'ArrowUp':
-                moonObject.position.y += 5;
-                updateMoonPosition();
-                return;
-            case 'ArrowDown':
-                moonObject.position.y = Math.max(20, moonObject.position.y - 5);
-                updateMoonPosition();
-                return;
-            case 'ArrowLeft':
-                moonObject.position.x -= 5;
-                updateMoonPosition();
-                return;
-            case 'ArrowRight':
-                moonObject.position.x += 5;
-                updateMoonPosition();
-                return;
         }
+        // OK TUŞLARI KALDIRILIYOR - ARAÇ KONTROLÜ İÇİN SERBEST BIRAKILIYOR
     }
 
     switch(event.code) {
@@ -1132,6 +1383,25 @@ function handleKeyPress(event) {
                 showMoonControlNotification();
             }
             break;
+        // MÜZİK KONTROLÜ: P tuşuna basınca müziği aç/kapat
+        case 'KeyP':
+            toggleMusic();
+            showMusicNotification();
+            break;
+    }
+    
+    // HERHANGİ BİR TUŞ BASILINCA MÜZİK BAŞLAT (ilk etkileşim)
+    tryStartMusicOnFirstInteraction();
+}
+
+// İlk kullanıcı etkileşiminde müziği başlatma
+function tryStartMusicOnFirstInteraction() {
+    if (currentMusic && musicEnabled && currentMusic.paused) {
+        currentMusic.play().catch(e => {
+            if (e.name !== 'NotAllowedError') {
+                console.warn('Müzik başlatma hatası:', e.message);
+            }
+        });
     }
 }
 
@@ -1234,9 +1504,17 @@ if (nitroActive) {
   // Harita değişimi kontrolü (her COINS_PER_MAP_CHANGE coin'de bir)
   const mapIndex = Math.floor(coinCount / COINS_PER_MAP_CHANGE) % MAP_TYPES.length;
   if (mapIndex !== currentMapIndex) {
+    const oldMapIndex = currentMapIndex;
     currentMapIndex = mapIndex;
+    
+    console.log(`🗺️ Harita değişimi: ${MAP_TYPES[oldMapIndex].name} → ${MAP_TYPES[currentMapIndex].name}`);
+    
     createRoad(MAP_TYPES[currentMapIndex]);
     showMapChangeNotification(MAP_TYPES[currentMapIndex]);
+    
+    // ANINDA MÜZİK DEĞİŞİMİ - HEM NOTIFICATION HEM MÜZİK
+    console.log('🎵 Harita değişimi nedeniyle müzik anında değiştiriliyor...');
+    playMapMusic(currentMapIndex);
   }
 
   displayDebugInfo();
@@ -1296,7 +1574,26 @@ if (nitroActive) {
 
   // Render
   renderer.render(scene, camera);
+  
+  // FAR KONTROLÜ - DEBUG BİLGİSİ (sadece 5 saniyede bir)
+  if (Math.floor(Date.now() / 5000) !== Math.floor((Date.now() - 16) / 5000)) {
+    checkHeadlightStatus();
+  }
+  
   requestAnimationFrame(gameLoop);
+}
+
+// Far durumu kontrolü
+function checkHeadlightStatus() {
+  if (carHeadlights && carHeadlights.length > 0) {
+    carHeadlights.forEach((light, index) => {
+      if (light) {
+        console.log(`💡 Far ${index + 1}: Parlaklık=${light.intensity}, Mesafe=${light.distance}, Aktif=${light.visible}`);
+      }
+    });
+  } else {
+    console.warn('⚠️ Araba farları bulunamadı! Far sistemi çalışmıyor olabilir.');
+  }
 }
 
 function updateObstacles() {
@@ -1384,6 +1681,10 @@ function updateObstacles() {
 function gameOver() {
  gameActive = false;
  
+ // OYUN BİTTİĞİNDE VARSAYILAN MÜZİĞE DÖN
+ console.log('🎮 Oyun bitti - Varsayılan müziğe dönülüyor...');
+ playMapMusic(0); // İlk harita müziğine dön
+ 
  // Game Over ekranını göster
  let gameOverDiv = document.getElementById('gameOver');
  if (!gameOverDiv) {
@@ -1410,6 +1711,7 @@ function gameOver() {
    <p>Final Puanınız: ${Math.floor(score)}</p>
    <p>Ulaştığınız Harita: ${MAP_TYPES[currentMapIndex].name}</p>
    <p style="font-size: 18px; margin-top: 20px;">Tekrar oynamak için SPACE tuşuna basın</p>
+   <p style="font-size: 14px; color: #FFB6C1;">🎵 Varsayılan müzik çalıyor...</p>
  `;
  gameOverDiv.style.display = 'block';
 }
@@ -1420,6 +1722,10 @@ function restartGame() {
  if (gameOverDiv) {
    gameOverDiv.style.display = 'none';
  }
+ 
+ // OYUN YENİDEN BAŞLADIĞINDA VARSAYILAN MÜZİĞE DÖN
+ console.log('🔄 Oyun yeniden başlıyor - Varsayılan müziğe dönülüyor...');
+ playMapMusic(0); // İlk harita müziğine dön
  
  // Oyun değişkenlerini sıfırla
  gameActive = true;
@@ -1468,7 +1774,7 @@ function restartGame() {
    updateMoonPosition();
  }
  
- console.log('Oyun yeniden başlatıldı!');
+ console.log('✅ Oyun yeniden başlatıldı! İlk harita ve müzik yüklendi.');
 
 }
 
@@ -1511,10 +1817,11 @@ function createGameUI() {
  controlsDiv.style.fontSize = '14px';
  controlsDiv.innerHTML = `
    <p><strong>Kontroller:</strong></p>
-   <p>← Sol Şerit | → Sağ Şerit</p>
+   <p>← → Ok Tuşları: Araç Şerit Değiştirme</p>
    <p>Shift/N: Nitro | Ctrl/B: Fren</p>
    <p>C: Kamera Değiştir (3 Mod)</p>
-   ${isNightMode ? '<p>M: Ay Hareket Modu | WASD: Ay Kontrol</p>' : ''}
+   <p>P: Müzik Aç/Kapat 🎵</p>
+   ${isNightMode ? '<p style="color: #FFD700;">🌙 GECE MODU:</p><p>M: Ay Hareket Modu | WASD: Ay Kontrolü</p><p style="color: #FFB6C1;">(Ok tuşları her zaman araç için kullanılır)</p>' : ''}
    <p>Altın coinleri toplayın!</p>
    <p>Her ${COINS_PER_MAP_CHANGE} coin = Yeni Harita!</p>
  `;
@@ -2278,14 +2585,16 @@ function showMoonControlNotification() {
         notification.innerHTML = `
             <strong>🌙 AY HAREKET MODU AÇIK!</strong><br>
             <br>
-            WASD / Ok Tuşları: Ayı hareket ettir<br>
-            M: Modu kapat
+            <span style="color: #00FFFF;">WASD Tuşları:</span> Ayı hareket ettir<br>
+            <span style="color: #FFD700;">← → Ok Tuşları:</span> Araç kontrol (değişmez)<br>
+            <span style="color: #FF9999;">M Tuşu:</span> Modu kapat
         `;
     } else {
         notification.innerHTML = `
             <strong>🌙 AY HAREKET MODU KAPALI</strong><br>
             <br>
-            M tuşuna basarak ayı hareket ettirebilirsiniz
+            <span style="color: #FFD700;">M tuşuna basarak ayı hareket ettirebilirsiniz</span><br>
+            <span style="color: #CCCCCC;">WASD ile ay, ← → ile araç kontrolü</span>
         `;
     }
     
@@ -2325,4 +2634,121 @@ function createMoonStatusIndicator() {
     `;
     
     indicator.style.display = 'block';
+}
+
+// Müzik kontrol bildirimi
+function showMusicNotification() {
+    let notification = document.getElementById('musicNotification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'musicNotification';
+        notification.style.position = 'absolute';
+        notification.style.top = '30%';
+        notification.style.right = '20px';
+        notification.style.background = 'rgba(0, 100, 0, 0.9)';
+        notification.style.color = '#FFFFFF';
+        notification.style.padding = '15px 20px';
+        notification.style.borderRadius = '10px';
+        notification.style.fontSize = '16px';
+        notification.style.textAlign = 'center';
+        notification.style.zIndex = '1000';
+        notification.style.display = 'none';
+        notification.style.border = '2px solid #00FF00';
+        notification.style.boxShadow = '0 0 20px rgba(0, 255, 0, 0.5)';
+        document.body.appendChild(notification);
+    }
+    
+    notification.innerHTML = `🎵 Müzik: ${musicEnabled ? '<span style="color: #00FF00;">AÇIK</span>' : '<span style="color: #FF6666;">KAPALI</span>'}`;
+    notification.style.display = 'block';
+    
+    // 2 saniye sonra bildirim kaybolsun
+    setTimeout(() => {
+        notification.style.display = 'none';
+    }, 2000);
+}
+
+// Gece modunda ay durumu göstergesi
+function createMoonStatusIndicator() {
+    if (!isNightMode) return;
+    
+    let indicator = document.getElementById('moonStatus');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'moonStatus';
+        indicator.style.position = 'absolute';
+        indicator.style.top = '20px';
+        indicator.style.right = '20px';
+        indicator.style.background = 'rgba(0, 0, 50, 0.8)';
+        indicator.style.color = '#FFFFFF';
+        indicator.style.padding = '10px 15px';
+        indicator.style.borderRadius = '10px';
+        indicator.style.fontSize = '14px';
+        indicator.style.zIndex = '100';
+        indicator.style.border = '2px solid #FFFF00';
+        indicator.style.fontFamily = 'Arial, sans-serif';
+        document.body.appendChild(indicator);
+    }
+    
+    indicator.innerHTML = `
+        🌙 Gece Modu<br>
+        Ay Hareket: ${canMoveMoon ? '<span style="color: #00FF00;">AÇIK</span>' : '<span style="color: #FF6666;">KAPALI</span>'}
+    `;
+    
+    indicator.style.display = 'block';
+}
+
+// YOL MODELLERİ SİSTEMİ - YENİ EKLENDİ
+let loadedRoadModels = {
+    desert: null, // Çöl yolu modeli
+    normal: null  // Normal yol (şimdilik null, geometry kullanıyor)
+};
+
+// Çöl yolu GLB dosya yolları (farklı isimler denenir)
+const DESERT_ROAD_PATHS = [
+    'graphics_three/assets/desert_road.glb',
+    'graphics_three/assets/desert.glb', 
+    'graphics_three/assets/col_yolu.glb',
+    'graphics_three/textures/desertroad.glb' // Mevcut dosya
+];
+
+// YOL MODELİ YÜKLEME FONKSİYONU
+async function loadRoadModels() {
+    console.log('🛣️ Yol modelleri yükleniyor...');
+    
+    // Çöl yolu modelini yükle
+    for (const path of DESERT_ROAD_PATHS) {
+        try {
+            const gltf = await new Promise((resolve, reject) => {
+                loader.load(path, resolve, undefined, reject);
+            });
+            
+            loadedRoadModels.desert = gltf.scene;
+            loadedRoadModels.desert.scale.set(1, 1, 1);
+            loadedRoadModels.desert.traverse(child => {
+                if (child.isMesh) {
+                    child.receiveShadow = true;
+                    child.castShadow = false; // Yol gölge atmasın
+                }
+            });
+            
+            console.log(`✅ Çöl yolu modeli yüklendi: ${path}`);
+            break; // İlk başarılı yüklenen modeli kullan
+            
+        } catch (error) {
+            console.warn(`⚠️ Çöl yolu modeli yüklenemedi: ${path}`);
+        }
+    }
+    
+    if (!loadedRoadModels.desert) {
+        console.warn('❌ Hiçbir çöl yolu modeli bulunamadı. Normal geometrik yol kullanılacak.');
+        console.info('💡 Çöl yolu için GLB dosyası eklemek isterseniz:');
+        console.info('   📁 graphics_three/assets/ klasörüne aşağıdaki isimlerden biriyle ekleyin:');
+        console.info('   🔸 desert_road.glb');
+        console.info('   🔸 desert.glb'); 
+        console.info('   🔸 col_yolu.glb');
+        console.info('   🔸 13f61e6a113e41deaeb4b7a33adf5d72.glb (mevcut dosya test edildi)');
+        console.info('   ✨ Dosya eklendikten sonra sayfa yenilenince otomatik yüklenecektir.');
+    } else {
+        console.log('🎉 Çöl yolu GLB modeli başarıyla yüklendi! Çöl haritasında özel yol görünecek.');
+    }
 }
