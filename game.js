@@ -13,7 +13,7 @@ const MUSIC_VOLUME = 0.7; // 0.3'ten 0.7'ye artırıldı - daha yüksek ses
 
 // Harita müzikleri - basit müzikler (daha sonra değiştirilebilir)
 const MAP_MUSIC = {
-    0: 'graphics_three/musics/default.mp3', // Normal harita için basit ton
+    0: 'graphics_three/musics/Life is a Highway.mp3', // Normal harita için basit ton
     1: 'graphics_three/musics/forgottendeserts.mp3', // Çöl haritası için
     2: 'graphics_three/musics/snow.mp3', // Karlı harita için (şimdilik aynı müzik) 
     3: 'graphics_three/musics/spring.mp3'  // Bahar haritası için (şimdilik aynı müzik)
@@ -215,6 +215,17 @@ const AVAILABLE_CARS = [
         scale: 0.4,
         description: "Klasik yarış efsanesi"
     }
+    ,
+    {
+        name: "Wingo",
+        path: "graphics_three/assets/wingo/source/Wingo.glb",
+        scale: 0.12, // Bu değeri aracın boyutuna göre ayarlayabilirsiniz
+        description: "Hızlı ve şık spor arabası",
+         music: "graphics_three/musics/Gang_Cars.mp3" // SADECE WINGO'YA ÖZEL MÜZİK
+    
+        
+    }
+    
 ];
 
 // SORUN 1: Eksik değişken tanımlamaları - dosyanın başına ekleyin
@@ -245,6 +256,67 @@ function checkCollision(obstacle, playerCar) {
     const box2 = new THREE.Box3().setFromObject(playerCar);
 
     return box1.intersectsBox(box2);
+}
+// Müzik fonksiyonlarının yanına ekleyin (80. satır civarı):
+
+// Seçili araç için müzik kontrolü (sadece özel müziği olanlar için)
+function playSelectedCarMusic() {
+    const selectedCar = AVAILABLE_CARS[selectedCarIndex];
+    
+    // Eğer seçili aracın özel müziği varsa onu çal
+    if (selectedCar && selectedCar.music) {
+        console.log(`🎵 ${selectedCar.name} için özel müzik çalıyor: ${selectedCar.music}`);
+        
+        // MEVCUT MÜZİĞİ DURDUR
+        if (currentMusic) {
+            try {
+                currentMusic.pause();
+                currentMusic.currentTime = 0;
+                currentMusic = null;
+            } catch (e) {
+                console.warn('Müzik durdurulurken hata:', e);
+            }
+        }
+        
+        try {
+            currentMusic = new Audio();
+            currentMusic.src = selectedCar.music;
+            currentMusic.volume = MUSIC_VOLUME;
+            currentMusic.loop = true;
+            currentMusic.preload = 'auto';
+            
+            const playImmediately = () => {
+                console.log(`✅ ${selectedCar.name} özel müziği başladı`);
+                if (musicEnabled) {
+                    currentMusic.play().catch(e => {
+                        console.warn('⚠️ Araç müziği çalınamadı:', e.message);
+                        if (e.name === 'NotAllowedError') {
+                            showMusicInteractionPrompt();
+                        }
+                    });
+                }
+            };
+            
+            currentMusic.addEventListener('loadeddata', playImmediately);
+            currentMusic.addEventListener('canplay', playImmediately);
+            
+            currentMusic.addEventListener('error', (e) => {
+                console.error('❌ Araç müziği yükleme hatası:', selectedCar.music);
+                console.error('Varsayılan harita müziğine dönülüyor...');
+                playMapMusic(currentMapIndex); // Hata durumunda harita müziğine dön
+            });
+            
+            currentMusic.load();
+            
+        } catch (error) {
+            console.error('💥 Araç müziği oluşturma hatası:', error);
+            playMapMusic(currentMapIndex); // Hata durumunda harita müziğine dön
+        }
+    } else {
+        // Özel müziği yoksa normal harita müziğini çal
+        console.log(`🎵 ${selectedCar.name} için özel müzik yok, harita müziği çalıyor`);
+        playMapMusic(currentMapIndex);
+    }
 }
 
 let loadedObstacleModels = [];
@@ -438,7 +510,9 @@ async function startGame() {
     }
     
     // İLK MÜZİK BAŞLAT
+    playSelectedCarMusic()
     playMapMusic(0);
+    
     
     // Pencere boyut değişikliği
     window.addEventListener('resize', onWindowResize);
