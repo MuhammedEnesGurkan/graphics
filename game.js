@@ -13,10 +13,10 @@ const MUSIC_VOLUME = 0.7; // 0.3'ten 0.7'ye artırıldı - daha yüksek ses
 
 // Harita müzikleri - basit müzikler (daha sonra değiştirilebilir)
 const MAP_MUSIC = {
-    0: 'graphics_three/musics/Life is a Highway.mp3', // Normal harita için basit ton
-    1: 'graphics_three/musics/forgottendeserts.mp3', // Çöl haritası için
-    2: 'graphics_three/musics/snow.mp3', // Karlı harita için (şimdilik aynı müzik) 
-    3: 'graphics_three/musics/spring.mp3'  // Bahar haritası için (şimdilik aynı müzik)
+    0: 'graphics_three/musics/Life is a Highway.mp3', 
+    1: 'graphics_three/musics/forgottendeserts.mp3', 
+    2: 'graphics_three/musics/snow.mp3', 
+    3: 'graphics_three/musics/Opening Race.mp3'  
 };
 
 // Müzik kontrol fonksiyonları - MP3 DESTEĞI İLE YENİDEN YAZILDI
@@ -185,15 +185,15 @@ function showMusicInteractionPrompt() {
 }
 
 const OBSTACLE_GLB_MODELS = [
-    'graphics_three/assets/mater.glb',
-    'graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb',
+    'graphics_three/assets/mia.glb',
+    'graphics_three/assets/sheriff.glb',
     // diğer .glb yollarını ekleyebilirsin
 ];
 
 // Coin sistemi için yeni değişkenler - harita değişimi için coin sayısını düşürdüm
 let coins = [];
 let coinCount = 0;
-const COINS_PER_MAP_CHANGE = 15; // Her 15 coin'de harita değişimi (50'den düşürüldü)
+const COINS_PER_MAP_CHANGE = 20; // Her 15 coin'de harita değişimi (50'den düşürüldü)
 
 // Araç seçimi sistemi
 const AVAILABLE_CARS = [
@@ -221,10 +221,37 @@ const AVAILABLE_CARS = [
         path: "graphics_three/assets/wingo/source/Wingo.glb",
         scale: 0.12, // Bu değeri aracın boyutuna göre ayarlayabilirsiniz
         description: "Hızlı ve şık spor arabası",
-         music: "graphics_three/musics/Gang_Cars.mp3" // SADECE WINGO'YA ÖZEL MÜZİK
-    
+        // music: "graphics_three/musics/Gang_Cars.mp3" // SADECE WINGO'YA ÖZEL MÜZİK
+    },
+     {
+        name: "DJ",
+        path: "graphics_three/assets/dj_cars_2_game_wii.glb",
+        scale: 0.5,
+        description: "Hızlı ve sanatsever yarış arabası",
+      
         
+    },
+    {
+        name: "Boost",
+        path: "graphics_three/assets/1999_boost.glb",
+        scale: 0.5,
+        description: "Hızlı ve lider ruhlu yarış arabası",
+      
+        
+    },
+    {
+        name: "Snot Rod",
+        path: "graphics_three/assets/Snot Rod.glb",
+        scale: 0.12,
+        description: "Turbo gazlı, asi drag arabası", 
+    },
+    {
+        name: "Finn McMissle",
+        path: "graphics_three/assets/Finn McMissle.glb",
+        scale: 0.5,
+        description: "Casus, zeki, çok amaçlı Aston Martin", 
     }
+
     
 ];
 
@@ -333,7 +360,12 @@ async function loadObstacleModels() {
                 );
             });
             const model = gltf.scene;
-            model.scale.set(0.4, 0.4, 0.4);
+            if (OBSTACLE_GLB_MODELS[i].includes('mia.glb',)) {
+                model.scale.set(0.15, 0.15, 0.15); // Mia için çok küçük
+                console.log(' Mia modeli küçük boyutta ayarlandı (0.15)');
+            } else {
+                model.scale.set(0.4, 0.4, 0.4); // Diğer modeller normal boyutta
+            }
             model.traverse(child => {
                 if (child.isMesh) {
                     child.castShadow = true;
@@ -828,6 +860,10 @@ async function loadCarModel() {
         
         carModel = gltf.scene.clone();
         carModel.scale.set(selectedCar.scale, selectedCar.scale, selectedCar.scale);
+        if (selectedCar.name === "DJ" || "Finn McMissle" ) {
+            carModel.rotation.y = - Math.PI / 2; // 90 derece döndür
+            console.log('🔄 DJ modeli 90 derece döndürüldü');
+        }
         
         // Gölge ayarları
         carModel.traverse((child) => {
@@ -1621,6 +1657,45 @@ function gameLoop() {
       console.log(`✅ Otomatik harita değişimi başarılı: ${MAP_TYPES[currentMapIndex].name}`);
     }
   }
+
+  if (selectedCarIndex === 3|| selectedCarIndex === 4 && currentMapIndex === 0) { // Wingo ve Normal harita
+    // Eğer şu anda Wingo'nun özel müziği çalmıyorsa başlat
+    if (!currentMusic || !currentMusic.src.includes('Gang_Cars.mp3')) {
+      console.log('🎵 Wingo normal haritada - özel müzik başlatılıyor...');
+      
+      // Mevcut müziği durdur
+      if (currentMusic) {
+        currentMusic.pause();
+        currentMusic = null;
+      }
+      
+      // Wingo'nun özel müziğini çal
+      try {
+        currentMusic = new Audio('graphics_three/musics/Gang_Cars.mp3');
+        currentMusic.volume = MUSIC_VOLUME;
+        currentMusic.loop = true;
+        
+        if (musicEnabled) {
+          currentMusic.play().catch(e => {
+            console.warn('Wingo müziği çalınamadı:', e);
+          });
+        }
+        
+        console.log('🚗 Wingo özel müziği başladı!');
+      } catch (error) {
+        console.error('Wingo müziği yüklenemedi:', error);
+        // Hata durumunda normal harita müziğine dön
+        playMapMusic(currentMapIndex);
+      }
+    }
+  } else {
+    // Wingo değilse veya normal harita değilse, normal harita müziği çal
+    if (currentMusic && currentMusic.src.includes('Gang_Cars.mp3')) {
+      console.log('🎵 Wingo özel müziği durduruluyor - normal müziğe dönülüyor...');
+      playMapMusic(currentMapIndex);
+    }
+  }
+
 
   displayDebugInfo();
 
@@ -3392,14 +3467,33 @@ function updateCoins() {
             console.log(`💰 Coin toplandı! Toplam: ${coinCount}`);
         }
         
-        // Geride kalan coin'leri yeniden konumlandır
-        if (coin.position.z < carZ - 30) {
+        // MESAFE KONTROLÜ ARTTIRILDI - Geride kalan coin'leri yeniden konumlandır
+        if (coin.position.z < carZ - 50) { // 30'dan 50'ye artırıldı
             const newLane = Math.floor(Math.random() * 4);
-            coin.position.set(getXFromLane(newLane), 1, carZ + 50 + Math.random() * 20);
+            coin.position.set(
+                getXFromLane(newLane), 
+                1, 
+                carZ + 100 + Math.random() * 50 // Daha ileri konumlandır
+            );
             coin.userData.z = coin.position.z;
+            coin.userData.lane = newLane;
             coin.userData.collected = false;
+            
+            // Coin'i sahneye tekrar ekle (eğer kaldırılmışsa)
+            if (!scene.children.includes(coin)) {
+                scene.add(coin);
+            }
+            
+            console.log(`🔄 Coin yeniden konumlandırıldı: Lane ${newLane}, Z=${Math.floor(coin.position.z)}`);
         }
     });
+    
+    // EK GÜVENLİK: Eğer coin sayısı çok azsa yenilerini ekle
+    const activeCoinCount = coins.filter(coin => !coin.userData.collected).length;
+    if (activeCoinCount < 10) { // Minimum 10 coin olsun
+        console.log(`🪙 Coin sayısı az (${activeCoinCount}), yenileri ekleniyor...`);
+        addMoreCoins(10 - activeCoinCount);
+    }
 }
 
 function createWeatherSystem(mapType) {
@@ -3677,4 +3771,30 @@ function clearObstaclesAndCoins() {
     coins = [];
     
     console.log('🧹 Engeller ve coin\'ler temizlendi');
+}
+// Daha fazla coin eklemek için yardımcı fonksiyon - updateCoins fonksiyonundan sonra ekleyin
+function addMoreCoins(count) {
+    for (let i = 0; i < count; i++) {
+        const coinGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8);
+        const coinMaterial = new THREE.MeshLambertMaterial({ color: 0xFFD700 });
+        const coin = new THREE.Mesh(coinGeometry, coinMaterial);
+        
+        const lane = Math.floor(Math.random() * 4);
+        const z = carZ + 80 + i * 15 + Math.random() * 20; // Arabanın ilerisinde
+        
+        coin.position.set(getXFromLane(lane), 1, z);
+        coin.rotation.x = Math.PI / 2;
+        coin.castShadow = true;
+        
+        coin.userData = {
+            lane: lane,
+            z: z,
+            collected: false
+        };
+        
+        coins.push(coin);
+        scene.add(coin);
+    }
+    
+    console.log(`✅ ${count} yeni coin eklendi. Toplam aktif coin: ${coins.filter(c => !c.userData.collected).length}`);
 }
