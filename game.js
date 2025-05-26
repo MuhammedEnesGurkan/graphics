@@ -1225,8 +1225,7 @@ function createRoad(mapType = MAP_TYPES[0]) {
   }
   
   console.log(`🛣️ ${mapType.name} haritası oluşturuldu - Yol uzunluğu: 600 birim`);
-}
-function updateRoad() {
+}function updateRoad() {
   if (!roadGroup) return;
   
   // 1. Yolu arabanın konumuna göre hareket ettir
@@ -1260,8 +1259,7 @@ function updateRoad() {
   // 3. Yol segmentlerini dinamik olarak ekle/çıkar (performans için)
   // Bu kısım isteğe bağlı - performans sorunu olursa ekleyebiliriz
 }
-
-// Harita tipine göre dekorasyon ekleme// Harita tipine göre dekorasyon ekleme - DAHA FAZLA DEKORASYON
+// Harita tipine göre dekorasyon ekleme - DAHA FAZLA DEKORASYON
 function addMapDecorations(mapType) {
   switch(mapType.name) {
     case "Çöl":
@@ -1549,7 +1547,6 @@ function updateCarPosition() {
         }
     }
 }
-
 function gameLoop() {
   if (!gameActive) {
     requestAnimationFrame(gameLoop);
@@ -1561,9 +1558,9 @@ function gameLoop() {
   let targetSpeed = initialCarSpeed + Math.floor(coinCount / 15) * 0.03; // Coin başına hız artışını da artırdım
   targetSpeed = Math.min(targetSpeed, MAX_SPEED);
   if (brakeActive) targetSpeed -= 0.07;
+  
   // Nitro aktifse hızı artır
- 
-if (nitroActive) {
+  if (nitroActive) {
     nitroSpriteLeft.visible = true;
     nitroSpriteRight.visible = true;
     if (nitroGlow && nitroLeft && nitroRight) {
@@ -1590,7 +1587,7 @@ if (nitroActive) {
     });
     
     targetSpeed += 0.25; // Nitro boost'u da artırdım
-} else {
+  } else {
     nitroSpriteLeft.visible = false;
     nitroSpriteRight.visible = false;
     if (nitroGlow && nitroLeft && nitroRight) {
@@ -1609,27 +1606,20 @@ if (nitroActive) {
         headlight.intensity = 1; // Normal parlaklığa dön
         headlight.color.setHex(0xffffff); // Normal beyaz renk
     });
-}
+  }
 
   // Sınırları koru - maksimum hızı da artırdım
   carSpeed = Math.max(0.05, Math.min(targetSpeed, 0.8));
 
   document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
 
-  // Harita değişimi kontrolü (her COINS_PER_MAP_CHANGE coin'de bir)
-  const mapIndex = Math.floor(coinCount / COINS_PER_MAP_CHANGE) % MAP_TYPES.length;
-  if (mapIndex !== currentMapIndex) {
-    const oldMapIndex = currentMapIndex;
-    currentMapIndex = mapIndex;
-    
-    console.log(`🗺️ Harita değişimi: ${MAP_TYPES[oldMapIndex].name} → ${MAP_TYPES[currentMapIndex].name}`);
-    
-    createRoad(MAP_TYPES[currentMapIndex]);
-    showMapChangeNotification(MAP_TYPES[currentMapIndex]);
-    
-    // ANINDA MÜZİK DEĞİŞİMİ - HEM NOTIFICATION HEM MÜZİK
-    console.log('🎵 Harita değişimi nedeniyle müzik anında değiştiriliyor...');
-    playMapMusic(currentMapIndex);
+  // YENİ HAREİTA DEĞİŞİM SİSTEMİ - DÖNGÜSEL OLARAK
+  if (coinCount >= COINS_PER_MAP_CHANGE) {
+    // Otomatik harita değişimi yap
+    const success = changeMap();
+    if (success) {
+      console.log(`✅ Otomatik harita değişimi başarılı: ${MAP_TYPES[currentMapIndex].name}`);
+    }
   }
 
   displayDebugInfo();
@@ -3626,4 +3616,65 @@ function carSelectionAnimationLoop() {
             carSelectionAnimationId = null;
         }
     }
+}
+// Harita değiştirme fonksiyonu - DÖNGÜSEL OLARAK EKLENDİ
+function changeMap() {
+    // Coin kontrolü - sadece yeterli coin varsa değiştir
+    if (coinCount < COINS_PER_MAP_CHANGE) {
+        console.log(`❌ Harita değişimi için ${COINS_PER_MAP_CHANGE} coin gerekli. Mevcut: ${coinCount}`);
+        return false;
+    }
+    
+    // Coin'leri harca
+    coinCount -= COINS_PER_MAP_CHANGE;
+    
+    // Önceki harita indexini sakla
+    const oldMapIndex = currentMapIndex;
+    
+    // Sonraki haritaya geç - DÖNGÜSEL OLARAK
+    currentMapIndex = (currentMapIndex + 1) % MAP_TYPES.length;
+    
+    const newMap = MAP_TYPES[currentMapIndex];
+    
+    console.log(`🗺️ Harita değişimi: ${MAP_TYPES[oldMapIndex].name} → ${newMap.name}`);
+    console.log(`🪙 Coin harcandı: ${COINS_PER_MAP_CHANGE}, Kalan: ${coinCount}`);
+    console.log(`📍 Yeni harita index: ${currentMapIndex}/${MAP_TYPES.length - 1}`);
+    
+    // Yolu yeniden oluştur
+    createRoad(newMap);
+    
+    // Müziği değiştir
+    playMapMusic(currentMapIndex);
+    
+    // Engel ve coin'leri temizle
+    clearObstaclesAndCoins();
+    
+    // Yeni engel ve coin'ler oluştur
+    createObstacles();
+    createCoins();
+    
+    // Bildirim göster
+    showMapChangeNotification(newMap);
+    
+    return true;
+}
+// Engel ve coin'leri temizle - HAREİTA DEĞİŞİMİNDE KULLANILIR
+function clearObstaclesAndCoins() {
+    // Engelleri temizle
+    obstacles.forEach(obstacle => {
+        scene.remove(obstacle);
+        if (obstacle.geometry) obstacle.geometry.dispose();
+        if (obstacle.material) obstacle.material.dispose();
+    });
+    obstacles = [];
+    
+    // Coin'leri temizle
+    coins.forEach(coin => {
+        scene.remove(coin);
+        if (coin.geometry) coin.geometry.dispose();
+        if (coin.material) coin.material.dispose();
+    });
+    coins = [];
+    
+    console.log('🧹 Engeller ve coin\'ler temizlendi');
 }
