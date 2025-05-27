@@ -10,6 +10,9 @@
 let currentMusic = null;
 let musicEnabled = true;
 const MUSIC_VOLUME = 0.7; // 0.3'ten 0.7'ye artırıldı - daha yüksek ses
+let carTopLight = null; // Global ışık referansı
+let lightBulb = null;   // Global ışık görsel referansı
+let lightControlsVisible = false;
 
 // Harita müzikleri - basit müzikler (daha sonra değiştirilebilir)
 const MAP_MUSIC = {
@@ -250,7 +253,34 @@ const AVAILABLE_CARS = [
         path: "graphics_three/assets/Finn McMissle.glb",
         scale: 0.5,
         description: "Casus, zeki, çok amaçlı Aston Martin", 
-    }
+    },
+    {
+    name: "Holley Shiftwell",
+    path: "graphics_three/assets/holley_shiftwell.glb",
+    scale: 0.5,
+    description: "Mor casus ajan, teknolojik ve hızlı"
+},
+{
+    name: "Michael Schumacher Ferrari",
+    path: "graphics_three/assets/michael_schumacher_ferrari.glb",
+    scale: 0.5,
+    description: "Efsanevi kırmızı Ferrari, yarış ikonu"
+},
+
+{
+    name: "Chick Hicks",
+    path: "graphics_three/assets/chick_hicks.glb",
+    scale: 0.5,
+    description: "Kibirli rakip, yeşil yarış arabası"
+},
+
+{
+    name: "The King",
+    path: "graphics_three/assets/the_king.glb",
+    scale: 0.12,
+    description: "Emektar mavi yarışçı, saygıdeğer şampiyon"
+}
+
 
     
 ];
@@ -1623,7 +1653,7 @@ function gameLoop() {
         headlight.color.setHex(0xaaffff); // Mavi-beyaz nitro rengi
     });
     
-    targetSpeed += 0.25; // Nitro boost'u da artırdım
+    targetSpeed += 0.25; 
   } else {
     nitroSpriteLeft.visible = false;
     nitroSpriteRight.visible = false;
@@ -1659,44 +1689,77 @@ function gameLoop() {
     }
   }
 
-  if ([3, 4, 5, 6].includes(selectedCarIndex) && currentMapIndex === 0) { // Wingo ve Normal harita
-    // Eğer şu anda Wingo'nun özel müziği çalmıyorsa başlat
-    if (!currentMusic || !currentMusic.src.includes('Gang_Cars.mp3')) {
-      console.log('🎵 Wingo normal haritada - özel müzik başlatılıyor...');
-      
-      // Mevcut müziği durdur
-      if (currentMusic) {
-        currentMusic.pause();
-        currentMusic = null;
-      }
-      
-      // Wingo'nun özel müziğini çal
-      try {
-        currentMusic = new Audio('graphics_three/musics/Gang_Cars.mp3');
-        currentMusic.volume = MUSIC_VOLUME;
-        currentMusic.loop = true;
-        
-        if (musicEnabled) {
-          currentMusic.play().catch(e => {
-            console.warn('Wingo müziği çalınamadı:', e);
-          });
-        }
-        
-        console.log('🚗 Wingo özel müziği başladı!');
-      } catch (error) {
-        console.error('Wingo müziği yüklenemedi:', error);
-        // Hata durumunda normal harita müziğine dön
-        playMapMusic(currentMapIndex);
-      }
+// Özel müzik kontrolü - 4 farklı grup için
+if ([3, 4, 5, 6].includes(selectedCarIndex) && currentMapIndex === 0) {
+  // Wingo, DJ, Boost, Snot Rod için Gang_Cars.mp3
+  if (!currentMusic || !currentMusic.src.includes('Gang_Cars.mp3')) {
+    console.log('🎵 Gang araçları normal haritada - Gang_Cars müziği başlatılıyor...');
+    
+    // Mevcut müziği durdur
+    if (currentMusic) {
+      currentMusic.pause();
+      currentMusic = null;
     }
-  } else {
-    // Wingo değilse veya normal harita değilse, normal harita müziği çal
-    if (currentMusic && currentMusic.src.includes('Gang_Cars.mp3')) {
-      console.log('🎵 Wingo özel müziği durduruluyor - normal müziğe dönülüyor...');
+    
+    // Gang_Cars müziğini çal
+    try {
+      currentMusic = new Audio('graphics_three/musics/Gang_Cars.mp3');
+      currentMusic.volume = MUSIC_VOLUME;
+      currentMusic.loop = true;
+      
+      if (musicEnabled) {
+        currentMusic.play().catch(e => {
+          console.warn('Gang_Cars müziği çalınamadı:', e);
+        });
+      }
+      
+      console.log('🚗 Gang_Cars özel müziği başladı!');
+    } catch (error) {
+      console.error('Gang_Cars müziği yüklenemedi:', error);
       playMapMusic(currentMapIndex);
     }
   }
-
+} 
+else if ([7, 8].includes(selectedCarIndex)) {
+  // Finn McMissile ve Holley için Cars 2 müziği
+  if (!currentMusic || !currentMusic.src.includes('Finn.mp3')) {
+    console.log('🎵 Finn/Holley normal haritada - Cars 2 müziği başlatılıyor...');
+    
+    // Mevcut müziği durdur
+    if (currentMusic) {
+      currentMusic.pause();
+      currentMusic = null;
+    }
+    
+    // Cars 2 müziğini çal
+    try {
+      currentMusic = new Audio('graphics_three/musics/Finn.mp3');
+      currentMusic.volume = MUSIC_VOLUME;
+      currentMusic.loop = true;
+      
+      if (musicEnabled) {
+        currentMusic.play().catch(e => {
+          console.warn('Cars 2 müziği çalınamadı:', e);
+        });
+      }
+      
+      console.log('🚗 Cars 2 (Finn/Holley) özel müziği başladı!');
+    } catch (error) {
+      console.error('Cars 2 müziği yüklenemedi:', error);
+      playMapMusic(currentMapIndex);
+    }
+  }
+}
+else {
+  // Özel müzik araçları değilse veya normal harita değilse, normal harita müziği çal
+  const specialMusicFiles = ['Gang_Cars.mp3', 'Cars 2  Its Finn Mcmissile.mp3'];
+  const currentMusicFile = currentMusic ? currentMusic.src.split('/').pop() : '';
+  
+  if (currentMusic && specialMusicFiles.some(file => currentMusicFile.includes(file))) {
+    console.log('🎵 Özel müzik durduruluyor - normal müziğe dönülüyor...');
+    playMapMusic(currentMapIndex);
+  }
+}
 
   displayDebugInfo();
 
@@ -3232,6 +3295,28 @@ function updateCarDisplay() {
         
         carSelectionScene.add(currentDisplayedCar);
     }
+      const carTopLight = new THREE.PointLight(0xffffff, 4.0, 20); // Intensity 2.0'dan 4.0'a çıkarıldı, menzil 20'ye çıkarıldı
+carTopLight.position.set(0, 3.0, 0); // Biraz daha yakın (3.5'den 3.0'a)
+carTopLight.castShadow = true;
+carTopLight.shadow.mapSize.width = 1024; // Gölge kalitesi artırıldı
+carTopLight.shadow.mapSize.height = 1024;
+carTopLight.shadow.camera.near = 0.1;
+carTopLight.shadow.camera.far = 25;
+        
+        
+        const carAmbientLight = new THREE.AmbientLight(0x404040, 0.8); // Yumuşak ortam ışığı
+carSelectionScene.add(carAmbientLight);
+        
+        // Görsel olarak ışık kaynağını göstermek için küçük küre
+        const lightBulbGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+        const lightBulbMaterial = new THREE.MeshBasicMaterial({ 
+             color: 0xffff00, // Daha sarı
+    emissive: 0xffff00,
+    emissiveIntensity: 1.0 
+        });
+        const lightBulb = new THREE.Mesh(lightBulbGeometry, lightBulbMaterial);
+        lightBulb.position.set(0, 3.5, 0); // Işık ile aynı pozisyon
+        currentDisplayedCar.add(lightBulb);
     
     // Bilgi panelini güncelle
     const carInfoPanel = document.getElementById('carInfoPanel');
@@ -3506,7 +3591,7 @@ function updateWeatherEffects() {
 }
 
 function switchCameraMode() {
-    currentCameraMode = (currentCameraMode + 1) % 3;
+    currentCameraMode = (currentCameraMode + 1) % 4;
     
     if (steeringWheel) {
         steeringWheel.visible = (currentCameraMode === CAMERA_MODES.FIRST_PERSON);
@@ -3747,7 +3832,10 @@ function changeMap() {
     createRoad(newMap);
     
     // Müziği değiştir
+    const hasSpecialMusic = [ 7, 8].includes(selectedCarIndex);
+    if (!hasSpecialMusic) {
     playMapMusic(currentMapIndex);
+    }
     
     // Engel ve coin'leri temizle
     clearObstaclesAndCoins();
