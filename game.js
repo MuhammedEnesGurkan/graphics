@@ -262,11 +262,12 @@ let selectedCarIndex = 0;
 let gameStarted = false;
 
 // Kamera sistemi - genişletildi
-let currentCameraMode = 0; // 0: 3. şahıs, 1: 1. şahıs, 2: ön görünüm
+let currentCameraMode = 0; // 0: 3. şahıs, 1: close 3. şahıs, 2: 1. şahıs, 3: ön görünüm
 const CAMERA_MODES = {
     THIRD_PERSON: 0,
-    FIRST_PERSON: 1,
-    FRONT_VIEW: 2
+    CLOSE_THIRD_PERSON: 1, // YENİ KAMERA MODU EKLENDİ
+    FIRST_PERSON: 2,
+    FRONT_VIEW: 3
 };
 
 // Gece/Gündüz sistemi
@@ -3527,6 +3528,14 @@ function updateCamera() {
                 carPos.z - cameraDistance
             );
             camera.lookAt(carPos.x, carPos.y, carPos.z + 5);
+            break;
+        case CAMERA_MODES.CLOSE_THIRD_PERSON:
+            camera.position.set(
+                carPos.x,
+                carPos.y + 1.5,
+                carPos.z - 4
+            );
+            camera.lookAt(carPos.x, carPos.y + 0.3, carPos.z + 3);
             break;
             
         case CAMERA_MODES.FIRST_PERSON:
