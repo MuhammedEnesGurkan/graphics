@@ -860,11 +860,11 @@ async function loadCarModel() {
         
         carModel = gltf.scene.clone();
         carModel.scale.set(selectedCar.scale, selectedCar.scale, selectedCar.scale);
-        if (selectedCar.name === "DJ" || "Finn McMissle" ) {
-            carModel.rotation.y = - Math.PI / 2; // 90 derece döndür
-            console.log('🔄 DJ modeli 90 derece döndürüldü');
-        }
-        
+       if (selectedCar.name === "DJ" || selectedCar.name === "Finn McMissle") {
+    carModel.rotation.y = - Math.PI / 2; // 90 derece döndür
+    console.log(`🔄 ${selectedCar.name} modeli 90 derece döndürüldü`);
+}
+
         // Gölge ayarları
         carModel.traverse((child) => {
             if (child.isMesh) {
@@ -1658,7 +1658,7 @@ function gameLoop() {
     }
   }
 
-  if (selectedCarIndex === 3|| selectedCarIndex === 4 && currentMapIndex === 0) { // Wingo ve Normal harita
+  if ([3, 4, 5, 6].includes(selectedCarIndex) && currentMapIndex === 0) { // Wingo ve Normal harita
     // Eğer şu anda Wingo'nun özel müziği çalmıyorsa başlat
     if (!currentMusic || !currentMusic.src.includes('Gang_Cars.mp3')) {
       console.log('🎵 Wingo normal haritada - özel müzik başlatılıyor...');
