@@ -23,9 +23,9 @@ const MAP_MUSIC = {
 let isJumping = false;
 let jumpVelocity = 0;
 let jumpStartY = 0.2; // Arabanın normal Y pozisyonu
-let jumpHeight = 3.0; // Maksimum zıplama yüksekliği
+let jumpHeight = 4.0; // Maksimum zıplama yüksekliği
 let jumpSpeed = 0.15; // Zıplama hızı
-let gravity = 0.008; // Yerçekimi kuvveti
+let gravity = 0.005; // Yerçekimi kuvveti
 let jumpCooldown = false;
 let jumpCooldownTime = 1000; // 1 saniye cooldown
 let jumpSound = null;
@@ -217,7 +217,8 @@ function showMusicInteractionPrompt() {
 const OBSTACLE_GLB_MODELS = [
     'graphics_three/assets/mia.glb',
     'graphics_three/assets/sheriff.glb',
-    // diğer .glb yollarını ekleyebilirsin
+    'graphics_three/assets/fillmore.glb',
+    'graphics_three/assets/guido.glb',
 ];
 
 // Coin sistemi için yeni değişkenler - harita değişimi için coin sayısını düşürdüm
@@ -280,10 +281,50 @@ const AVAILABLE_CARS = [
         path: "graphics_three/assets/Finn McMissle.glb",
         scale: 0.5,
         description: "Casus, zeki, çok amaçlı Aston Martin", 
-    }
+    },
+     {
+    name: "Michael Schumacher Ferrari",
+    path: "graphics_three/assets/michael_schumacher_ferrari.glb",
+    scale: 0.5,
+    description: "Efsanevi Formula 1 sürücüsünün Ferrari arabası"
+},
+{
+    name: "Holley Shiftwell",
+    path: "graphics_three/assets/holley_shiftwell.glb",
+    scale: 0.5,
+    description: "Yüksek teknolojiye sahip ajan araba"
+},
+{
+    name: "Chick Hicks",
+    path: "graphics_three/assets/chick_hicks.glb",
+    scale: 0.5,
+    description: "Hırslı ve kural tanımaz rakip yarışçı"
+},
+{
+    name: "The King",
+    path: "graphics_three/assets/the_king.glb",
+    scale: 0.12,
+    description: "Tecrübeli ve saygı duyulan emektar yarışçı"
+}
 
     
 ];
+
+// Global değişkenler bölümüne ekleyin:
+const CAR_ROTATIONS = {
+    "DJ": -Math.PI / 2,
+    "Finn McMissle": -Math.PI / 2,
+    "Snot Rod": 0,
+    "Holley Shiftwell": 0,
+    "Wingo": 0,
+    "Lightning McQueen": 0,
+    "Mater": 0,
+    "Doc Hudson": 0,
+    "Boost": 0,
+    "Michael Schumacher Ferrari": 0,
+    "Chick Hicks": 0,
+    "The King": 0
+};
 
 // SORUN 1: Eksik değişken tanımlamaları - dosyanın başına ekleyin
 let selectedCar = null;
@@ -293,10 +334,13 @@ let gameStarted = false;
 
 // Kamera sistemi - genişletildi
 let currentCameraMode = 0; // 0: 3. şahıs, 1: 1. şahıs, 2: ön görünüm
+
+
 const CAMERA_MODES = {
     THIRD_PERSON: 0,
-    FIRST_PERSON: 1,
-    FRONT_VIEW: 2
+    CLOSE_VIEW: 1,  
+    FIRST_PERSON: 2,  
+    FRONT_VIEW: 3     
 };
 
 // Gece/Gündüz sistemi
@@ -880,7 +924,6 @@ function createDayNightSelectionMenu() {
 
 async function loadCarModel() {
     try {
-        // Seçilen arabayı al
         selectedCar = AVAILABLE_CARS[selectedCarIndex];
         console.log(`🚗 ${selectedCar.name} modeli yükleniyor...`);
         
@@ -890,10 +933,12 @@ async function loadCarModel() {
         
         carModel = gltf.scene.clone();
         carModel.scale.set(selectedCar.scale, selectedCar.scale, selectedCar.scale);
-        if (selectedCar.name === "DJ" || "Finn McMissle" ) {
-            carModel.rotation.y = - Math.PI / 2; // 90 derece döndür
-            console.log('🔄 DJ modeli 90 derece döndürüldü');
-        }
+        
+        // DOĞRU ROTASYON UYGULAMASI
+        const baseRotation = CAR_ROTATIONS[selectedCar.name] || 0;
+        carModel.rotation.y = baseRotation;
+        console.log(`🔄 ${selectedCar.name} rotasyonu: ${(baseRotation * 180 / Math.PI).toFixed(0)}°`);
+       
         
         // Gölge ayarları
         carModel.traverse((child) => {
@@ -1535,7 +1580,7 @@ function createObstacles() {
     obstacles.forEach(obstacle => scene.remove(obstacle));
     obstacles = [];
 
-    const obstacleCount = 1;
+    const obstacleCount = 10;
     for (let i = 0; i < obstacleCount; i++) {
         const lane = Math.floor(Math.random() * 4);
         const z = (i + 3) * 6 + Math.random() * 3;
@@ -1630,8 +1675,9 @@ function handleKeyPress(event) {
                 moonObject.position.x += 5;
                 updateMoonPosition();
                 return;
+            
         }
-        // OK TUŞLARI KALDIRILIYOR - ARAÇ KONTROLÜ İÇİN SERBEST BIRAKILIYOR
+        
     }
 
     switch(event.code) {
@@ -1702,12 +1748,72 @@ function handleKeyPress(event) {
                 console.log('🎛️ Araç seçim ekranında ışık miktarı paneli çalıştı');
             }
             break;
+             case 'KeyO':
+            if (gameActive) {
+                reduceObstacles();
+            }
+            break;
     }
     
     // HERHANGİ BİR TUŞ BASILINCA MÜZİK BAŞLAT (ilk etkileşim)
     tryStartMusicOnFirstInteraction();
 }
 
+// updateObstacles fonksiyonundan sonra bu fonksiyonu ekleyin:
+
+function reduceObstacles() {
+    if (obstacles.length <= 5) { // 1'den 5'e değiştirildi
+        console.log('🚫 Zaten 5 veya daha az engel var!');
+        return;
+    }
+    
+    // Tüm engelleri kaldır
+    obstacles.forEach(obstacle => {
+        scene.remove(obstacle);
+        if (obstacle.geometry) obstacle.geometry.dispose();
+        if (obstacle.material) obstacle.material.dispose();
+    });
+    
+    // Array'i temizle
+    obstacles = [];
+    
+    // 5 ENGEL OLUŞTUR - 1'den 5'e değiştirildi
+    for (let i = 0; i < 5; i++) {
+        if (loadedObstacleModels.length > 0) {
+            const modelIdx = Math.floor(Math.random() * loadedObstacleModels.length);
+            const glbModel = loadedObstacleModels[modelIdx];
+            
+            if (glbModel) {
+                const obstacle = glbModel.clone();
+                const lane = Math.floor(Math.random() * 4);
+                const z = carZ + 30 + (i * 15) + Math.random() * 10; // Her engel arasında mesafe
+                
+                obstacle.position.set(getXFromLane(lane), 0.2, z);
+                obstacle.castShadow = true;
+
+                obstacle.userData = {
+                    lane: lane,
+                    z: z,
+                    originalY: obstacle.position.y,
+                    isGLBModel: true,
+                    npcSpeed: 0.05 + Math.random() * 0.1,
+                    direction: 1,
+                    laneChangeTimer: 0,
+                    laneChangeDelay: Math.random() * 500 + 500,
+                    targetLane: lane
+                };
+
+                obstacles.push(obstacle);
+                scene.add(obstacle);
+            }
+        }
+    }
+    
+    console.log(`🎯 ENGEL SAYISI AZALTILDI! Yeni engel sayısı: ${obstacles.length}`);
+    
+    // Bildirim göster
+    showObstacleReductionNotification();
+}
 // İlk kullanıcı etkileşiminde müziği başlatma
 function tryStartMusicOnFirstInteraction() {
     if (currentMusic && musicEnabled && currentMusic.paused) {
@@ -1753,12 +1859,14 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
     return;
   }
-
+const isGangCar = [3, 4, 5, 6,8].includes(selectedCarIndex); // Wingo, DJ, Boost, Snot Rod
   // Standart hız artışı - maksimum hızı artırdım
-  const MAX_SPEED = 0.5; // 0.3'ten 0.5'e artırdım
-  let targetSpeed = initialCarSpeed + Math.floor(coinCount / 15) * 0.03; // Coin başına hız artışını da artırdım
-  targetSpeed = Math.min(targetSpeed, MAX_SPEED);
-  if (brakeActive) targetSpeed -= 0.07;
+ 
+    const BASE_MAX_SPEED = isGangCar ? 0.7 : 0.5; // Gang araçları daha hızlı
+  const SPEED_INCREMENT = isGangCar ? 0.05 : 0.03; // Gang araçları daha hızlı hızlanır
+  let targetSpeed = initialCarSpeed + Math.floor(coinCount / 15) * SPEED_INCREMENT;
+  targetSpeed = Math.min(targetSpeed, BASE_MAX_SPEED);
+  if (brakeActive) targetSpeed -= 0.1;
   
   // Nitro aktifse hızı artır
   if (nitroActive) {
@@ -1784,10 +1892,12 @@ function gameLoop() {
     // ARABA FARLARINI DA PARLAT (YENİ EKLENDİ!)
     carHeadlights.forEach(headlight => {
         headlight.intensity = 2 + Math.random() * 0.3; // Normal 1'den 2'ye çıkar
-        headlight.color.setHex(0xaaffff); // Mavi-beyaz nitro rengi
+        headlight.color.setHex(0xaaffff); 
     });
+      const nitroBoost = isGangCar ? 0.35 : 0.25; // Gang araçları %40 daha güçlü nitro
+    targetSpeed += nitroBoost;
     
-    targetSpeed += 0.25; // Nitro boost'u da artırdım
+   
   } else {
     nitroSpriteLeft.visible = false;
     nitroSpriteRight.visible = false;
@@ -1808,11 +1918,11 @@ function gameLoop() {
         headlight.color.setHex(0xffffff); // Normal beyaz renk
     });
   }
-
+const ABSOLUTE_MAX_SPEED = isGangCar ? 1.2 : 0.8;
   // Sınırları koru - maksimum hızı da artırdım
-  carSpeed = Math.max(0.05, Math.min(targetSpeed, 0.8));
+  carSpeed = Math.max(0.05, Math.min(targetSpeed, ABSOLUTE_MAX_SPEED));
 
-  document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
+ document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
 
   // YENİ HAREİTA DEĞİŞİM SİSTEMİ - DÖNGÜSEL OLARAK
   if (coinCount >= COINS_PER_MAP_CHANGE) {
@@ -1822,44 +1932,84 @@ function gameLoop() {
       console.log(`✅ Otomatik harita değişimi başarılı: ${MAP_TYPES[currentMapIndex].name}`);
     }
   }
+// gameLoop fonksiyonunda mevcut müzik kontrol kodunu bulun ve şu şekilde değiştirin:
 
-  if (selectedCarIndex === 3|| selectedCarIndex === 4 && currentMapIndex === 0) { // Wingo ve Normal harita
-    // Eğer şu anda Wingo'nun özel müziği çalmıyorsa başlat
+// ARAÇ-SPESİFİK MÜZİK KONTROLÜ - FINN VE HOLLEY İÇİN GENİŞLETİLDİ
+const selectedCarName = AVAILABLE_CARS[selectedCarIndex].name;
+const selectedCarMusic = AVAILABLE_CARS[selectedCarIndex].music;
+
+// Wingo ve DJ/Boost için özel müzik (sadece normal haritada)
+if ([3, 4, 5, 6].includes(selectedCarIndex) && currentMapIndex === 0) { 
+    // Wingo (3) ve DJ (4) - Normal haritada Gang_Cars.mp3
     if (!currentMusic || !currentMusic.src.includes('Gang_Cars.mp3')) {
-      console.log('🎵 Wingo normal haritada - özel müzik başlatılıyor...');
-      
-      // Mevcut müziği durdur
-      if (currentMusic) {
-        currentMusic.pause();
-        currentMusic = null;
-      }
-      
-      // Wingo'nun özel müziğini çal
-      try {
-        currentMusic = new Audio('graphics_three/musics/Gang_Cars.mp3');
-        currentMusic.volume = MUSIC_VOLUME;
-        currentMusic.loop = true;
+        console.log(`🎵 ${selectedCarName} normal haritada - Gang_Cars.mp3 başlatılıyor...`);
         
-        if (musicEnabled) {
-          currentMusic.play().catch(e => {
-            console.warn('Wingo müziği çalınamadı:', e);
-          });
+        // Mevcut müziği durdur
+        if (currentMusic) {
+            currentMusic.pause();
+            currentMusic = null;
         }
         
-        console.log('🚗 Wingo özel müziği başladı!');
-      } catch (error) {
-        console.error('Wingo müziği yüklenemedi:', error);
-        // Hata durumunda normal harita müziğine dön
+        // Gang_Cars.mp3 çal
+        try {
+            currentMusic = new Audio('graphics_three/musics/Gang_Cars.mp3');
+            currentMusic.volume = MUSIC_VOLUME;
+            currentMusic.loop = true;
+            
+            if (musicEnabled) {
+                currentMusic.play().catch(e => {
+                    console.warn(`${selectedCarName} müziği çalınamadı:`, e);
+                });
+            }
+            
+            console.log(`🚗 ${selectedCarName} özel müziği başladı!`);
+        } catch (error) {
+            console.error(`${selectedCarName} müziği yüklenemedi:`, error);
+            playMapMusic(currentMapIndex);
+        }
+    }
+} 
+// Finn McMissle ve Holley Shiftwell için özel müzik (tüm haritalarda)
+else if ((selectedCarIndex === 7 || selectedCarIndex === 9)  && currentMapIndex === 0){ 
+    // Finn McMissle (7) ve Holley Shiftwell (9) - Finn.mp3
+    if (!currentMusic || !currentMusic.src.includes('Finn.mp3')) {
+        console.log(`🎵 ${selectedCarName} - Finn.mp3 başlatılıyor...`);
+        
+        // Mevcut müziği durdur
+        if (currentMusic) {
+            currentMusic.pause();
+            currentMusic = null;
+        }
+        
+        // Finn.mp3 çal
+        try {
+            currentMusic = new Audio('graphics_three/musics/Finn.mp3');
+            currentMusic.volume = MUSIC_VOLUME;
+            currentMusic.loop = true;
+            
+            if (musicEnabled) {
+                currentMusic.play().catch(e => {
+                    console.warn(`${selectedCarName} müziği çalınamadı:`, e);
+                });
+            }
+            
+            console.log(`🚗 ${selectedCarName} özel müziği başladı!`);
+        } catch (error) {
+            console.error(`${selectedCarName} müziği yüklenemedi:`, error);
+            playMapMusic(currentMapIndex);
+        }
+    }
+} 
+else {
+    // Özel müziği olmayan araçlar veya özel şartları sağlamayan durumlar
+    if (currentMusic && (
+        currentMusic.src.includes('Gang_Cars.mp3') || 
+        currentMusic.src.includes('Finn.mp3')
+    )) {
+        console.log(`🎵 ${selectedCarName} özel müziği durduruluyor - normal müziğe dönülüyor...`);
         playMapMusic(currentMapIndex);
-      }
     }
-  } else {
-    // Wingo değilse veya normal harita değilse, normal harita müziği çal
-    if (currentMusic && currentMusic.src.includes('Gang_Cars.mp3')) {
-      console.log('🎵 Wingo özel müziği durduruluyor - normal müziğe dönülüyor...');
-      playMapMusic(currentMapIndex);
-    }
-  }
+}
 
 
   displayDebugInfo();
@@ -1971,13 +2121,13 @@ function updateObstacles() {
         obstacle.userData.targetLane = newLane;
 
         obstacle.userData.laneChangeTimer = 0;
-        obstacle.userData.laneChangeDelay = Math.random() * 300 + 150;
+        obstacle.userData.laneChangeDelay = Math.random() * 500 + 350;
       }
 
       // 4. Yumuşak şerit değişimi
       const targetX = getXFromLane(obstacle.userData.targetLane);
       if (Math.abs(obstacle.position.x - targetX) > 0.1) {
-        obstacle.position.x += (targetX - obstacle.position.x) * 0.04;
+        obstacle.position.x += (targetX - obstacle.position.x) * 0.017;
       } else {
         obstacle.position.x = targetX;
         obstacle.userData.lane = obstacle.userData.targetLane;
@@ -2014,42 +2164,107 @@ function updateObstacles() {
         console.log('🦘 ENGEL AŞILDI! Araba havada, çarpışma kontrol edilmiyor');
         
         // Zıplama ile engel aşma bonus puanı
-        if (!obstacle.userData.jumpBonusGiven) {
-            score += 500; // Bonus puan
-            coinCount += 2; // Bonus coin
+         if (!obstacle.userData.jumpBonusGiven) {
             obstacle.userData.jumpBonusGiven = true;
-            console.log('🎉 ZIPLAMA BONUSU: +500 puan, +2 coin!');
-            
-            // Bonus gösterimi (isteğe bağlı)
-            showJumpBonus();
+            console.log('✅ Engel aşıldı - bonus puan yok');
         }
     }
 
     // --- NPC sınır kontrolleri ve yeniden doğurma ---
     // Çok geride kalanları ileri taşı
-    if (obstacle.userData.z < carZ - 30) {
-      obstacle.userData.z = carZ + 80 + Math.random() * 40;
-      let newLane = Math.floor(Math.random() * 4);
-      obstacle.userData.lane = newLane;
-      obstacle.userData.targetLane = newLane;
-      obstacle.position.x = getXFromLane(newLane);
-      obstacle.userData.npcSpeed = 0.07 + Math.random() * 0.08;
-      obstacle.userData.direction = 1; // Hep ileri
-      obstacle.userData.laneChangeDelay = Math.random() * 300 + 150;
-      obstacle.userData.jumpBonusGiven = false; // Bonus durumunu sıfırla
+     if (obstacle.userData.z < carZ - 30) {
+      // YENİ RASTGELE MODEL SEÇ VE DEĞİŞTİR
+      const newModelIndex = Math.floor(Math.random() * loadedObstacleModels.length);
+      const newModel = loadedObstacleModels[newModelIndex];
+      
+      if (newModel) {
+        // Eski modeli sahneden kaldır
+        scene.remove(obstacle);
+        
+        // Yeni model klonla
+        const newObstacle = newModel.clone();
+        
+        // Yeni pozisyon ayarla
+        obstacle.userData.z = carZ + 80 + Math.random() * 40;
+        let newLane = Math.floor(Math.random() * 4);
+        obstacle.userData.lane = newLane;
+        obstacle.userData.targetLane = newLane;
+        
+        // Yeni engeli konumlandır
+        newObstacle.position.set(getXFromLane(newLane), 0.2, obstacle.userData.z);
+        newObstacle.castShadow = true;
+        
+        // UserData'yı aktar
+        newObstacle.userData = {
+          ...obstacle.userData,
+          originalY: 0.2,
+          npcSpeed: 0.07 + Math.random() * 0.08,
+          direction: 1,
+          laneChangeDelay: Math.random() * 300 + 150,
+          jumpBonusGiven: false,
+          isGLBModel: true
+        };
+        
+        // Obstacles array'inde güncelle
+        const obstacleIndex = obstacles.indexOf(obstacle);
+        if (obstacleIndex !== -1) {
+          obstacles[obstacleIndex] = newObstacle;
+        }
+        
+        // Yeni engeli sahneye ekle
+        scene.add(newObstacle);
+        
+        console.log(`🔄 Engel yenilendi: ${OBSTACLE_GLB_MODELS[newModelIndex].split('/').pop()} - Lane ${newLane}, Z=${Math.floor(obstacle.userData.z)}`);
+        return; // Bu engel için işlemi sonlandır
+      }
     }
-    // Çok ilerde olanları geri taşı
+    
+    // Çok ilerde olanları geri taşı - YENİ RASTGELE MODEL SEÇİMİ
     if (obstacle.userData.z > carZ + 120) {
-      obstacle.userData.z = carZ - 20 + Math.random() * 15;
-      let newLane = Math.floor(Math.random() * 4);
-      obstacle.userData.lane = newLane;
-      obstacle.userData.targetLane = newLane;
-      obstacle.position.x = getXFromLane(newLane);
-      obstacle.userData.jumpBonusGiven = false; // Bonus durumunu sıfırla
+      // YENİ RASTGELE MODEL SEÇ VE DEĞİŞTİR
+      const newModelIndex = Math.floor(Math.random() * loadedObstacleModels.length);
+      const newModel = loadedObstacleModels[newModelIndex];
+      
+      if (newModel) {
+        // Eski modeli sahneden kaldır
+        scene.remove(obstacle);
+        
+        // Yeni model klonla
+        const newObstacle = newModel.clone();
+        
+        // Yeni pozisyon ayarla
+        obstacle.userData.z = carZ - 20 + Math.random() * 15;
+        let newLane = Math.floor(Math.random() * 4);
+        obstacle.userData.lane = newLane;
+        obstacle.userData.targetLane = newLane;
+        
+        // Yeni engeli konumlandır
+        newObstacle.position.set(getXFromLane(newLane), 0.2, obstacle.userData.z);
+        newObstacle.castShadow = true;
+        
+        // UserData'yı aktar
+        newObstacle.userData = {
+          ...obstacle.userData,
+          originalY: 0.2,
+          jumpBonusGiven: false,
+          isGLBModel: true
+        };
+        
+        // Obstacles array'inde güncelle
+        const obstacleIndex = obstacles.indexOf(obstacle);
+        if (obstacleIndex !== -1) {
+          obstacles[obstacleIndex] = newObstacle;
+        }
+        
+        // Yeni engeli sahneye ekle
+        scene.add(newObstacle);
+        
+        console.log(`⬅️ Engel geri konumlandırıldı: ${OBSTACLE_GLB_MODELS[newModelIndex].split('/').pop()} - Lane ${newLane}, Z=${Math.floor(obstacle.userData.z)}`);
+        return; // Bu engel için işlemi sonlandır
+      }
     }
-  }
 }
-
+}
 
 
 function gameOver() {
@@ -3440,8 +3655,8 @@ function updateCarDisplay() {
     // Yeni arabayı ekle - MERKEZ POZİSYON (Y=0)
     if (loadedCarModels[selectedCarIndex]) {
         currentDisplayedCar = loadedCarModels[selectedCarIndex].clone();
-        currentDisplayedCar.position.set(0, 0, 0); // Y=0 merkez pozisyon
-        currentDisplayedCar.rotation.y = 0;
+        currentDisplayedCar.position.set(0, 0.7, 0); // Y=0 merkez pozisyon
+        
         
         // Araç boyutunu kontrol et ve gerekirse ölçekle
         const box = new THREE.Box3().setFromObject(currentDisplayedCar);
@@ -3596,7 +3811,7 @@ function updateWeatherEffects() {
 }
 
 function switchCameraMode() {
-    currentCameraMode = (currentCameraMode + 1) % 3;
+    currentCameraMode = (currentCameraMode + 1) % 4;
     
     if (steeringWheel) {
         steeringWheel.visible = (currentCameraMode === CAMERA_MODES.FIRST_PERSON);
@@ -3619,7 +3834,15 @@ function updateCamera() {
             );
             camera.lookAt(carPos.x, carPos.y, carPos.z + 5);
             break;
+            case CAMERA_MODES.CLOSE_VIEW:
             
+            camera.position.set(
+                carPos.x,
+                carPos.y + 1.5,     
+                carPos.z - 4        
+            );
+            camera.lookAt(carPos.x, carPos.y + 0.5, carPos.z + 3);
+            break;
         case CAMERA_MODES.FIRST_PERSON:
             camera.position.set(
                 carPos.x,
@@ -3997,74 +4220,77 @@ function showJumpBonus() {
         bonusDiv.style.display = 'none';
     }, 2000);
 }
-
 function restartGame() {
- // Game Over ekranını gizle
- const gameOverDiv = document.getElementById('gameOver');
- if (gameOverDiv) {
-   gameOverDiv.style.display = 'none';
- }
- 
- // OYUN YENİDEN BAŞLADIĞINDA VARSAYILAN MÜZİĞE DÖN
- console.log('🔄 Oyun yeniden başlıyor - Varsayılan müziğe dönülüyor...');
- playMapMusic(0); // İlk harita müziğine dön
- 
- // Oyun değişkenlerini sıfırla
- gameActive = true;
- score = 0;
- coinCount = 0; // Coin sayısını sıfırla
- carPosition = 1;
- carTargetX = getXFromLane(carPosition);
- carZ = 0;
- carSpeed = initialCarSpeed;
- currentMapIndex = 0;
- currentCameraMode = CAMERA_MODES.THIRD_PERSON; // Kamerayı 3. şahıs moduna sıfırla
- canMoveMoon = false; // Ay hareket modunu kapat
- 
- // ZİPLAMA DURUMUNU SIFIRLAMA - YENİ EKLENDİ
- isJumping = false;
- jumpVelocity = 0;
- jumpCooldown = false;
- console.log('🦘 Zıplama durumu sıfırlandı');
- 
- // Arabayı yeniden konumlandır
- if (playerCar) {
-   playerCar.position.set(getXFromLane(carPosition), jumpStartY, carZ); // Y pozisyonunu jumpStartY'ye ayarla
-   playerCar.rotation.set(0, 0, 0);
- }
- 
- // Direksiyon görünürlüğünü sıfırla
- if (steeringWheel) {
-   steeringWheel.visible = false;
- }
- 
- // Engelleri yeniden oluştur
- obstacles.forEach(obstacle => {
-   scene.remove(obstacle);
- });
- createObstacles();
- 
- // Coin'leri yeniden oluştur
- coins.forEach(coin => {
-   scene.remove(coin);
- });
- createCoins();
- 
- // İlk haritayı yeniden oluştur
- createRoad(MAP_TYPES[0]);
- nitroLights.forEach(light => {
-    light.intensity = 0;
-});
- 
- // Ay pozisyonunu varsayılan konuma sıfırla (gece modundaysa)
- if (isNightMode && moonObject) {
-   moonObject.position.set(0, 80, -40); // Yeni merkezi pozisyon
-   updateMoonPosition();
- }
- 
- console.log('✅ Oyun yeniden başlatıldı! İlk harita ve müzik yüklendi.');
+    // Game Over ekranını gizle
+    const gameOverDiv = document.getElementById('gameOver');
+    if (gameOverDiv) {
+        gameOverDiv.style.display = 'none';
+    }
+    
+    console.log('🔄 Oyun yeniden başlıyor - Varsayılan müziğe dönülüyor...');
+    playMapMusic(0);
+    
+    // Oyun değişkenlerini sıfırla
+    gameActive = true; // ÖNEMLİ: Bu satır mutlaka olmalı!
+    score = 0;
+    coinCount = 0;
+    carPosition = 1;
+    carTargetX = getXFromLane(carPosition);
+    carZ = 0;
+    carSpeed = initialCarSpeed;
+    currentMapIndex = 0;
+    currentCameraMode = CAMERA_MODES.THIRD_PERSON;
+    canMoveMoon = false;
+    
+    // ZİPLAMA DURUMUNU SIFIRLAMA
+    isJumping = false;
+    jumpVelocity = 0;
+    jumpCooldown = false;
+    
+    // ARABAYA DOĞRU ROTASYON UYGULA
+    if (playerCar) {
+        playerCar.position.set(getXFromLane(carPosition), jumpStartY, carZ);
+        
+        const selectedCarName = AVAILABLE_CARS[selectedCarIndex].name;
+        const correctRotation = CAR_ROTATIONS[selectedCarName] || 0;
+        playerCar.rotation.set(0, correctRotation, 0);
+        
+        console.log(`🔄 ${selectedCarName} restart rotasyonu: ${(correctRotation * 180 / Math.PI).toFixed(0)}°`);
+    }
+    
+    // Direksiyon görünürlüğünü sıfırla
+    if (steeringWheel) {
+        steeringWheel.visible = false;
+    }
+    
+    // Engelleri yeniden oluştur
+    obstacles.forEach(obstacle => {
+        scene.remove(obstacle);
+    });
+    createObstacles();
+    
+    // Coin'leri yeniden oluştur
+    coins.forEach(coin => {
+        scene.remove(coin);
+    });
+    createCoins();
+    
+    // İlk haritayı yeniden oluştur
+    createRoad(MAP_TYPES[0]);
+    
+    // Nitro ışıklarını kapat
+    nitroLights.forEach(light => {
+        light.intensity = 0;
+    });
+    
+    // Ay pozisyonunu sıfırla (gece modundaysa)
+    if (isNightMode && moonObject) {
+        moonObject.position.set(0, 80, -40);
+        updateMoonPosition();
+    }
+    
+    console.log('✅ Oyun yeniden başlatıldı! gameActive:', gameActive);
 }
-
 // IŞIK KONTROL FONKSİYONLARI - YENİ EKLENDİ
 function toggleCarSelectionLights() {
     carSelectionLightsEnabled = !carSelectionLightsEnabled;
