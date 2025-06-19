@@ -53,6 +53,10 @@ let lightObjects = {
 function playMapMusic(mapIndex) {
     if (!musicEnabled) return;
     
+    if (selectedCarIndex === 12 && currentMusic && currentMusic.src.includes('m3.mp3')) {
+        console.log(`🚗 BMW M3 aktif - harita müziği ${MAP_TYPES[mapIndex].name} için atlanıyor`);
+        return; // BMW M3 müziğini koruyup çık
+    }
     
     if (currentMusic) {
         try {
@@ -306,7 +310,13 @@ const AVAILABLE_CARS = [
     scale: 0.12,
     description: "Tecrübeli ve saygı duyulan emektar yarışçı"
 }
-
+,
+{
+    name: "BMW M3 GTR",
+    path: "graphics_three/assets/M3.glb",
+    scale: 0.5,
+    description: "2003 NFS MW Efsanesi"
+}
     
 ];
 
@@ -1580,7 +1590,7 @@ function createObstacles() {
     obstacles.forEach(obstacle => scene.remove(obstacle));
     obstacles = [];
 
-    const obstacleCount = 10;
+    const obstacleCount = 500;
     for (let i = 0; i < obstacleCount; i++) {
         const lane = Math.floor(Math.random() * 4);
         const z = (i + 3) * 6 + Math.random() * 3;
@@ -1859,17 +1869,45 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
     return;
   }
-const isGangCar = [3, 4, 5, 6,8].includes(selectedCarIndex); 
-  
- 
-    const BASE_MAX_SPEED = isGangCar ? 0.7 : 0.5; 
-  const SPEED_INCREMENT = isGangCar ? 0.05 : 0.03; 
-  let targetSpeed = initialCarSpeed + Math.floor(coinCount / 15) * SPEED_INCREMENT;
-  targetSpeed = Math.min(targetSpeed, BASE_MAX_SPEED);
-  if (brakeActive) targetSpeed -= 0.1;
-  
-  
-  if (nitroActive) {
+
+const isGangCar = [1,3, 4, 5, 6, 8, 12].includes(selectedCarIndex); 
+
+// HIZ HESAPLAMA
+const BASE_MAX_SPEED = isGangCar ? 0.7 : 0.5; 
+const SPEED_INCREMENT = isGangCar ? 0.05 : 0.03; 
+let targetSpeed = initialCarSpeed + Math.floor(coinCount / 15) * SPEED_INCREMENT;
+targetSpeed = Math.min(targetSpeed, BASE_MAX_SPEED);
+if (brakeActive) targetSpeed -= 0.1;
+
+// NITRO HIZ ARTIŞI
+if (nitroActive) {
+    const nitroBoost = isGangCar ? 0.50 : 0.25; 
+    targetSpeed += nitroBoost;
+}
+
+// MAKSIMUM HIZ SINIRI
+const ABSOLUTE_MAX_SPEED = isGangCar ? 1.2 : 0.8;
+targetSpeed = Math.min(targetSpeed, ABSOLUTE_MAX_SPEED);
+
+// ✨ YUMUŞAK HIZ GEÇİŞİ SİSTEMİ
+const ACCELERATION = 0.02; // Hızlanma katsayısı (düşük = daha yumuşak)
+const DECELERATION = 0.03; // Yavaşlama katsayısı (düşük = daha yumuşak)
+
+if (carSpeed < targetSpeed) {
+    // Hızlanma
+    carSpeed += ACCELERATION;
+    carSpeed = Math.min(carSpeed, targetSpeed); // Hedef hızı aşmasın
+} else if (carSpeed > targetSpeed) {
+    // Yavaşlama  
+    carSpeed -= DECELERATION;
+    carSpeed = Math.max(carSpeed, targetSpeed); // Hedef hızın altına düşmesin
+}
+
+// Minimum hız kontrolü
+carSpeed = Math.max(0.05, carSpeed);
+
+// NITRO EFEKTLERİ
+if (nitroActive) {
     nitroSpriteLeft.visible = true;
     nitroSpriteRight.visible = true;
     if (nitroGlow && nitroLeft && nitroRight) {
@@ -1884,21 +1922,17 @@ const isGangCar = [3, 4, 5, 6,8].includes(selectedCarIndex);
         nitroGlow.material.opacity = 0.3 + Math.sin(time * 1.5) * 0.2;
     }
     
-    
+    // Nitro ışık efektleri
     nitroLights.forEach(light => {
         light.intensity = 2 + Math.random() * 0.5; 
     });
     
-    
+    // Far ışık efektleri
     carHeadlights.forEach(headlight => {
         headlight.intensity = 2 + Math.random() * 0.3; 
         headlight.color.setHex(0xaaffff); 
     });
-      const nitroBoost = isGangCar ? 0.35 : 0.25; 
-    targetSpeed += nitroBoost;
-    
-   
-  } else {
+} else {
     nitroSpriteLeft.visible = false;
     nitroSpriteRight.visible = false;
     if (nitroGlow && nitroLeft && nitroRight) {
@@ -1907,49 +1941,41 @@ const isGangCar = [3, 4, 5, 6,8].includes(selectedCarIndex);
         nitroRight.visible = false;
     }
     
-    
+    // Nitro ışıklarını kapat
     nitroLights.forEach(light => {
         light.intensity = 0;
     });
     
-    
+    // Farları normale döndür
     carHeadlights.forEach(headlight => {
         headlight.intensity = 1; 
         headlight.color.setHex(0xffffff); 
     });
-  }
-const ABSOLUTE_MAX_SPEED = isGangCar ? 1.2 : 0.8;
-  
-  carSpeed = Math.max(0.05, Math.min(targetSpeed, ABSOLUTE_MAX_SPEED));
+}
 
- document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
+// HIZ GÖSTERGE GÜNCELLEMESİ
+document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
 
-  
-  if (coinCount >= COINS_PER_MAP_CHANGE) {
-    
+// OTOMATİK HARİTA DEĞİŞİMİ
+if (coinCount >= COINS_PER_MAP_CHANGE) {
     const success = changeMap();
     if (success) {
-      console.log(`✅ Otomatik harita değişimi başarılı: ${MAP_TYPES[currentMapIndex].name}`);
+        console.log(`✅ Otomatik harita değişimi başarılı: ${MAP_TYPES[currentMapIndex].name}`);
     }
-  }
+}
 
-
-
+// MÜZİK SİSTEMİ
 const selectedCarName = AVAILABLE_CARS[selectedCarIndex].name;
-const selectedCarMusic = AVAILABLE_CARS[selectedCarIndex].music;
-
 
 if ([3, 4, 5, 6].includes(selectedCarIndex) && currentMapIndex === 0) { 
-    
+    // Gang Cars müziği
     if (!currentMusic || !currentMusic.src.includes('Gang_Cars.mp3')) {
         console.log(`🎵 ${selectedCarName} normal haritada - Gang_Cars.mp3 başlatılıyor...`);
-        
         
         if (currentMusic) {
             currentMusic.pause();
             currentMusic = null;
         }
-        
         
         try {
             currentMusic = new Audio('graphics_three/musics/Gang_Cars.mp3');
@@ -1969,18 +1995,15 @@ if ([3, 4, 5, 6].includes(selectedCarIndex) && currentMapIndex === 0) {
         }
     }
 } 
-
-else if ((selectedCarIndex === 7 || selectedCarIndex === 9)  && currentMapIndex === 0){ 
-    
+else if ((selectedCarIndex === 7 || selectedCarIndex === 9) && currentMapIndex === 0){ 
+    // Finn müziği
     if (!currentMusic || !currentMusic.src.includes('Finn.mp3')) {
         console.log(`🎵 ${selectedCarName} - Finn.mp3 başlatılıyor...`);
-        
         
         if (currentMusic) {
             currentMusic.pause();
             currentMusic = null;
         }
-        
         
         try {
             currentMusic = new Audio('graphics_three/musics/Finn.mp3');
@@ -2000,88 +2023,109 @@ else if ((selectedCarIndex === 7 || selectedCarIndex === 9)  && currentMapIndex 
         }
     }
 } 
+else if (selectedCarIndex === 12) { 
+    // BMW M3 GTR - TÜM haritalarda m3.mp3 çalsın
+    if (!currentMusic || !currentMusic.src.includes('m3.mp3')) {
+        console.log(`🎵 ${selectedCarName} - m3.mp3 başlatılıyor (TÜM HARITALARDA)...`);
+        
+        if (currentMusic) {
+            currentMusic.pause();
+            currentMusic = null;
+        }
+        
+        try {
+            currentMusic = new Audio('graphics_three/musics/m3.mp3');
+            currentMusic.volume = MUSIC_VOLUME;
+            currentMusic.loop = true;
+            
+            if (musicEnabled) {
+                currentMusic.play().catch(e => {
+                    console.warn(`${selectedCarName} müziği çalınamadı:`, e);
+                });
+            }
+            
+            console.log(`🚗 ${selectedCarName} özel müziği başladı (Harita: ${MAP_TYPES[currentMapIndex].name})!`);
+        } catch (error) {
+            console.error(`${selectedCarName} müziği yüklenemedi:`, error);
+            playMapMusic(currentMapIndex);
+        }
+    } else {
+        // BMW M3 müziği zaten çalıyor
+        console.log(`🎵 ${selectedCarName} müziği devam ediyor (Harita: ${MAP_TYPES[currentMapIndex].name})`);
+    }
+} 
 else {
-    
+    // Diğer araçlar için normal müzik
     if (currentMusic && (
         currentMusic.src.includes('Gang_Cars.mp3') || 
-        currentMusic.src.includes('Finn.mp3')
+        currentMusic.src.includes('Finn.mp3') || 
+        currentMusic.src.includes('m3.mp3')
     )) {
         console.log(`🎵 ${selectedCarName} özel müziği durduruluyor - normal müziğe dönülüyor...`);
         playMapMusic(currentMapIndex);
     }
 }
 
+// DEBUG BİLGİLERİ
+displayDebugInfo();
 
-  displayDebugInfo();
+// ARAÇ POZİSYONU VE HAREKET
+carZ += carSpeed;
+updateJump();
 
-  
-  carZ += carSpeed;
-
-  
-  updateJump();
-
-  
-  if (playerCar) {
+if (playerCar) {
     playerCar.position.z = carZ;
     updateCarPosition();
 
-    
-    
+    // Araç sallanma efekti (sadece zıplamadayken değil)
     if (!isJumping) {
         const speedFactor = carSpeed * 3;
         playerCar.rotation.z = Math.sin(Date.now() * 0.01 * speedFactor) * 0.03;
         playerCar.rotation.x = Math.sin(Date.now() * 0.008 * speedFactor) * 0.01;
     }
-  }
+}
 
-  
-  updateCamera();
+// KAMERA GÜNCELLEMESİ
+updateCamera();
 
-  
-  if (isNightMode) {
+// GECE MODU KONTROLLERI
+if (isNightMode) {
     updateMoonPosition();
     createMoonStatusIndicator(); 
-  } else {
-    
+} else {
     const indicator = document.getElementById('moonStatus');
     if (indicator) {
-      indicator.style.display = 'none';
+        indicator.style.display = 'none';
     }
-  }
+}
 
-  
-  if (roadGroup) {
+// SAHNE GÜNCELLEMELERİ
+if (roadGroup) {
     roadGroup.position.z = -carZ;
-  }
-  updateRoad();
+}
+updateRoad();
+updateObstacles();
+updateCoins();
+updateWeatherEffects();
 
-  
-  updateObstacles();
-  
-  
-  updateCoins();
-  
-  
-  updateWeatherEffects();
+// UI GÜNCELLEMELERİ
+document.getElementById('score').textContent = Math.floor(score);
 
-  
-  document.getElementById('score').textContent = Math.floor(score);
-  
-  
-  const coinDisplayElement = document.getElementById('coinDisplay');
-  if (coinDisplayElement) {
+const coinDisplayElement = document.getElementById('coinDisplay');
+if (coinDisplayElement) {
     coinDisplayElement.textContent = coinCount;
-  }
+}
 
-  
-  renderer.render(scene, camera);
-  
-  
-  if (Math.floor(Date.now() / 5000) !== Math.floor((Date.now() - 16) / 5000)) {
+// RENDER
+renderer.render(scene, camera);
+
+// FAR DURUMU KONTROLÜ (5 saniyede bir)
+if (Math.floor(Date.now() / 5000) !== Math.floor((Date.now() - 16) / 5000)) {
     checkHeadlightStatus();
-  }
-  
-  requestAnimationFrame(gameLoop);
+}
+
+// SONRAKI FRAME
+requestAnimationFrame(gameLoop);
 }
 
 
@@ -3993,12 +4037,21 @@ function changeMap() {
     console.log(`🗺️ Harita değişimi: ${MAP_TYPES[oldMapIndex].name} → ${newMap.name}`);
     console.log(`🪙 Coin harcandı: ${COINS_PER_MAP_CHANGE}, Kalan: ${coinCount}`);
     console.log(`📍 Yeni harita index: ${currentMapIndex}/${MAP_TYPES.length - 1}`);
+
+
+
+       createRoad(newMap);
     
-    
+        if (selectedCarIndex !== 12) {
+        playMapMusic(currentMapIndex);
+    } else {
+        console.log(`🎵 BMW M3 aktif - müzik devam ediyor: ${currentMusic?.src || 'Yok'}`);
+    }
+
     createRoad(newMap);
     
     
-    playMapMusic(currentMapIndex);
+  
     
     
     clearObstaclesAndCoins();
