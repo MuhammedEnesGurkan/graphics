@@ -51,6 +51,8 @@
     </style>
 </head>
 <body>
+    <canvas id="gameCanvas"></canvas>
+    
     <div id="loading" class="neon-text">
         🚗 3D Araba Yarış Oyunu Yükleniyor... 🚗
         <br><br>
@@ -65,14 +67,39 @@
         <small>🌟 Yüksek kalite gölgeler</small>
     </div>
 
-    <!-- Three.js kütüphaneleri - DÜZELTILDI -->
+    <!-- Three.js kütüphaneleri -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     
-    <!-- Oyun kodu -->
-    <script src="game.js"></script>
-    
     <script>
+        // GLTFLoader'ı THREE namespace'ine ekle ve kontrol et
+        // Script yüklendikten hemen sonra kontrol et
+        (function() {
+            function checkGLTFLoader() {
+                if (typeof THREE !== 'undefined') {
+                    if (typeof GLTFLoader !== 'undefined') {
+                        THREE.GLTFLoader = GLTFLoader;
+                        console.log('✅ GLTFLoader THREE namespace\'ine eklendi');
+                        return true;
+                    } else if (typeof THREE.GLTFLoader !== 'undefined') {
+                        console.log('✅ THREE.GLTFLoader zaten mevcut');
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            // Hemen kontrol et
+            if (!checkGLTFLoader()) {
+                // Biraz bekle ve tekrar dene
+                setTimeout(() => {
+                    if (!checkGLTFLoader()) {
+                        console.warn('⚠️ GLTFLoader henüz yüklenmedi, game.js yüklenirken kontrol edilecek');
+                    }
+                }, 100);
+            }
+        })();
+        
         // Loading ekranını gizle
         window.addEventListener('load', () => {
             setTimeout(() => {
@@ -85,17 +112,37 @@
         
         // Hata yakalama
         window.addEventListener('error', (e) => {
-            console.error('Oyun hatası:', e.error);
+            console.error('Oyun hatası:', e.error, e.message, e.filename, e.lineno);
             const loading = document.getElementById('loading');
             if (loading) {
                 loading.innerHTML = `
                     <div style="color: #ff6666;">
                         ❌ Oyun yüklenirken hata oluştu!<br>
+                        <small>Hata: ${e.message}</small><br>
+                        <small>Dosya: ${e.filename}:${e.lineno}</small><br>
+                        <small>Konsolu kontrol edin veya sayfayı yenileyin.</small>
+                    </div>
+                `;
+            }
+        });
+        
+        // Unhandled promise rejection yakalama
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('Promise hatası:', e.reason);
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.innerHTML = `
+                    <div style="color: #ff6666;">
+                        ❌ Oyun yüklenirken hata oluştu!<br>
+                        <small>Hata: ${e.reason}</small><br>
                         <small>Konsolu kontrol edin veya sayfayı yenileyin.</small>
                     </div>
                 `;
             }
         });
     </script>
+    
+    <!-- Oyun kodu -->
+    <script src="game.js"></script>
 </body>
 </html>

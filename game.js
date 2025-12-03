@@ -362,11 +362,86 @@ let steeringWheel = null;
 let canMoveMoon = false; 
 
 function checkCollision(obstacle, playerCar) {
+    // Önce mesafe kontrolü - sadece yakın engeller için collision kontrolü yap
+    const zDistance = Math.abs(obstacle.position.z - playerCar.position.z);
+    if (zDistance > 2.0) { // 2 birim yakınlıkta kontrol et
+        return false;
+    }
     
-    const box1 = new THREE.Box3().setFromObject(obstacle);
-    const box2 = new THREE.Box3().setFromObject(playerCar);
-
-    return box1.intersectsBox(box2);
+    // X ekseni kontrolü - sadece aynı şeritteyse
+    const xDistance = Math.abs(obstacle.position.x - playerCar.position.x);
+    if (xDistance > 1.0) { // Şerit genişliği kontrolü
+        return false;
+    }
+    
+    // Sadece arabanın ana gövdesini kullan - TÜM ışıkları ve efektleri hariç tut
+    const carBox = new THREE.Box3();
+    let hasValidMesh = false;
+    
+    // Arabanın sadece ana mesh'lerini kontrol et - sadece araç gövdesi
+    playerCar.traverse((child) => {
+        // Sadece opak, katı mesh'leri dahil et
+        // TÜM ışıklar, efektler, volumetric'ler hariç
+        if (child.isMesh && 
+            !child.userData.isVolumetric && 
+            !child.userData.isHeadlightGlow &&
+            !child.userData.isLightTarget &&
+            !child.userData.isHeadlight &&
+            !child.userData.isNitroVolumetric &&
+            !child.userData.isNitroGlow &&
+            child.material) {
+            // Material kontrolü - şeffaf değilse ve opacity yeterliyse
+            const isTransparent = child.material.transparent === true;
+            const opacity = child.material.opacity !== undefined ? child.material.opacity : 1.0;
+            
+            if (!isTransparent && opacity >= 0.8) { // Opak objeler
+                const childBox = new THREE.Box3().setFromObject(child);
+                if (!childBox.isEmpty()) {
+                    carBox.union(childBox);
+                    hasValidMesh = true;
+                }
+            }
+        }
+    });
+    
+    // Eğer hiç mesh bulunamazsa, arabanın kendisini kullan ama tüm efektleri filtrele
+    if (!hasValidMesh || carBox.isEmpty()) {
+        // Sadece ana gövdeyi al, TÜM child objeleri filtrele
+        const tempBox = new THREE.Box3();
+        playerCar.children.forEach((child) => {
+            if (child.isMesh && 
+                !child.userData.isVolumetric && 
+                !child.userData.isHeadlightGlow &&
+                !child.userData.isLightTarget &&
+                !child.userData.isHeadlight &&
+                !child.userData.isNitroVolumetric &&
+                !child.userData.isNitroGlow &&
+                child.material) {
+                const isTransparent = child.material.transparent === true;
+                const opacity = child.material.opacity !== undefined ? child.material.opacity : 1.0;
+                
+                if (!isTransparent && opacity >= 0.8) {
+                    tempBox.expandByObject(child);
+                    hasValidMesh = true;
+                }
+            }
+        });
+        if (!tempBox.isEmpty() && hasValidMesh) {
+            carBox.copy(tempBox);
+        } else {
+            // Son çare: tüm objeyi al ama küçült
+            carBox.setFromObject(playerCar);
+            carBox.expandByScalar(-0.2); // %20 küçült (daha az küçült)
+        }
+    } else {
+        // Collision box'ı çok az küçült - sadece gerçek temas için
+        carBox.expandByScalar(-0.1); // %10 küçült (daha az küçült)
+    }
+    
+    const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+    obstacleBox.expandByScalar(-0.05); // Engel box'ını %5 küçült (çok az küçült)
+    
+    return obstacleBox.intersectsBox(carBox);
 }
 
 
@@ -561,7 +636,17 @@ let roadSegments = [];
 let obstacleModels = [];
 
 
-const loader = new THREE.GLTFLoader();
+// GLTFLoader'ı kontrol et ve oluştur
+let loader;
+if (typeof THREE !== 'undefined' && typeof THREE.GLTFLoader !== 'undefined') {
+    loader = new THREE.GLTFLoader();
+} else if (typeof GLTFLoader !== 'undefined') {
+    THREE.GLTFLoader = GLTFLoader;
+    loader = new THREE.GLTFLoader();
+} else {
+    console.error('❌ GLTFLoader bulunamadı!');
+    loader = null;
+}
 
 
 let playerCar = null;
@@ -645,9 +730,21 @@ async function startGame() {
     
     createObstacles();
   
+    // Create UI
+    createGameUI();
     
     gameLoop();
 }
+
+// Advanced Lighting System Variables
+let volumetricLights = [];
+let bloomEffects = [];
+let dynamicLightAdaptation = true;
+let lightIntensityMultiplier = 1.0;
+let volumetricLightMeshes = [];
+
+// Modern UI System Variables
+let modernUIInitialized = false;
 
 function setupLighting() {
     
@@ -660,26 +757,969 @@ function setupLighting() {
     }
     
     
-    const ambientLight = new THREE.AmbientLight(0x404040, isNightMode ? 0.4 : 0.8);
+    // Atmosferi biraz karanlıklaştır - gerçekçi aydınlatma için
+    const ambientLight = new THREE.AmbientLight(0x404040, isNightMode ? 0.25 : 0.5);
     scene.add(ambientLight);
     
     
-    const cameraLight = new THREE.SpotLight(0xffffff, 0.5);
+    const cameraLight = new THREE.SpotLight(0xffffff, 0.3);
     cameraLight.position.set(0, 10, 0);
     scene.add(cameraLight);
     
-    const spotLight = new THREE.SpotLight(0xffffff, isNightMode ? 0.8 : 1.5);
+    const spotLight = new THREE.SpotLight(0xffffff, isNightMode ? 0.5 : 1.0);
     spotLight.position.set(0, 30, 0);
     spotLight.angle = Math.PI / 3;
     spotLight.penumbra = 0.5;
     spotLight.castShadow = true;
     scene.add(spotLight);
+    
+    // Advanced Lighting Features
+    setupVolumetricLights();
+    setupBloomEffects();
+    setupDynamicLightAdaptation();
+}
+
+// Volumetric Light Effects - Creates visible light rays/beams
+function setupVolumetricLights() {
+    volumetricLights = [];
+    volumetricLightMeshes = [];
+    
+    // Create volumetric light cones for streetlights (night mode)
+    if (isNightMode && loadedStreetlightModel) {
+        // This will be called after streetlights are created
+        // We'll update this in createRoad function
+    }
+    
+    // Volumetric effect for car headlights - gerçekçi ışık ışınları
+    if (playerCar) {
+        createCarVolumetricLights();
+    }
+    
+    // Arabanın önündeki alanı aydınlatmak için ek volumetric light
+    // Bu gerçek hayattaki ışık saçılmasını simüle eder
+}
+
+function createCarVolumetricLights() {
+    // Beyaz far volumetric cone'ları kaldırıldı - sadece SpotLight'lar kullanılıyor
+    // Diğer ışıklar (nitro, fren) sabit kalıyor
+}
+
+// Bloom/Glow Effects - Enhanced visual quality
+function setupBloomEffects() {
+    bloomEffects = [];
+    
+    // Enhanced glow for nitro effects
+    if (nitroGlow) {
+        const bloomMaterial = nitroGlow.material.clone();
+        bloomMaterial.emissive = new THREE.Color(0xff4400);
+        bloomMaterial.emissiveIntensity = 2.0;
+        nitroGlow.material = bloomMaterial;
+        bloomEffects.push(nitroGlow);
+    }
+    
+    // Enhanced glow for moon (night mode)
+    if (isNightMode && moonObject) {
+        moonObject.traverse((child) => {
+            if (child.isMesh && child.material) {
+                const material = child.material.clone();
+                if (material.emissive) {
+                    material.emissiveIntensity = 1.5;
+                }
+                child.material = material;
+                bloomEffects.push(child);
+            }
+        });
+    }
+}
+
+// Dynamic Light Adaptation - Adjusts lighting based on speed and environment
+function setupDynamicLightAdaptation() {
+    dynamicLightAdaptation = true;
+    lightIntensityMultiplier = 1.0;
+}
+
+function updateDynamicLighting() {
+    if (!dynamicLightAdaptation) return;
+    
+    // Adjust light intensity based on car speed
+    const speedFactor = Math.min(carSpeed / 0.5, 1.5); // Normalize speed
+    lightIntensityMultiplier = 0.8 + (speedFactor * 0.4); // Range: 0.8 to 1.2
+    
+    // Adjust ambient light based on environment
+    const environmentFactor = isNightMode ? 0.6 : 1.0;
+    lightIntensityMultiplier *= environmentFactor;
+    
+    // Apply to volumetric lights
+    volumetricLightMeshes.forEach((mesh) => {
+        if (mesh.material) {
+            mesh.material.opacity = (isNightMode ? 0.15 : 0.08) * lightIntensityMultiplier;
+        }
+    });
+    
+    // Adjust headlight intensity dynamically - gerçekçi değerler
+    carHeadlights.forEach((headlight, index) => {
+        if (headlight) {
+            // İlk iki far için daha yüksek intensity (gerçekçi değerler)
+            if (index < 2) {
+                const baseIntensity = isNightMode ? 5.0 : 3.5;
+                headlight.intensity = baseIntensity * lightIntensityMultiplier;
+                // Gerçekçi sıcak beyaz renk
+                headlight.color.setHex(0xffffcc);
+            } else {
+                // Ön doldurma ışığı için
+                const baseIntensity = isNightMode ? 3.0 : 2.2;
+                headlight.intensity = baseIntensity * lightIntensityMultiplier;
+                headlight.color.setHex(0xffffcc);
+            }
+            
+            // Add slight flicker effect at high speeds (gerçekçi titreşim)
+            if (carSpeed > 0.6) {
+                headlight.intensity += Math.sin(Date.now() * 0.01) * 0.15;
+            }
+        }
+    });
+    
+    // Nitro boost lighting - neon mavi ışık
+    if (nitroActive) {
+        lightIntensityMultiplier *= 1.5;
+        nitroLights.forEach((light) => {
+            if (light && light.userData && light.userData.isNitroLight) {
+                light.intensity = 4.0 + Math.sin(Date.now() * 0.03) * 1.0;
+                light.color.setHex(0x00ffff); // Neon mavi
+            }
+        });
+    }
+    
+    // Fren lighting - kırmızı ışık
+    if (brakeActive) {
+        nitroLights.forEach((light) => {
+            if (light && light.userData && light.userData.isBrakeLight) {
+                light.intensity = 3.0 + Math.sin(Date.now() * 0.05) * 0.5;
+                light.color.setHex(0xff0000); // Kırmızı
+            }
+        });
+    }
+}
+
+// 3D HUD System - Creates holographic UI elements around the car
+// Modern UI System - Creates stunning, innovative UI elements
+function createModernUI() {
+    if (modernUIInitialized) return;
+    
+    // Remove old UI
+    const oldUI = document.getElementById('gameUI');
+    if (oldUI) oldUI.remove();
+    
+    // Create modern UI container
+    const uiContainer = document.createElement('div');
+    uiContainer.id = 'modernGameUI';
+    uiContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1000;
+        font-family: 'Arial', 'Helvetica', sans-serif;
+    `;
+    document.body.appendChild(uiContainer);
+    
+    // Create speedometer (circular gauge)
+    createSpeedometer(uiContainer);
+    
+    // Create nitro gauge
+    createNitroGauge(uiContainer);
+    
+    // Create score display with animations
+    createScoreDisplay(uiContainer);
+    
+    // Create coin counter
+    createCoinCounter(uiContainer);
+    
+    // Create visual effects overlay
+    createVisualEffectsOverlay(uiContainer);
+    
+    // Create minimap/radar
+    createMinimap(uiContainer);
+    
+    modernUIInitialized = true;
+    console.log('✅ Modern UI System initialized');
+}
+
+function createSpeedometer(container) {
+    const speedoContainer = document.createElement('div');
+    speedoContainer.id = 'speedometer';
+    speedoContainer.style.cssText = `
+        position: absolute;
+        bottom: 30px;
+        left: 30px;
+        width: 200px;
+        height: 200px;
+    `;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    canvas.style.cssText = `
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+    `;
+    speedoContainer.appendChild(canvas);
+    
+    const speedText = document.createElement('div');
+    speedText.id = 'speedText';
+    speedText.style.cssText = `
+        position: absolute;
+        bottom: 60px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 32px;
+        font-weight: bold;
+        color: #00ffff;
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.8), 0 0 20px rgba(0, 255, 255, 0.5);
+        text-align: center;
+    `;
+    speedText.textContent = '0';
+    speedoContainer.appendChild(speedText);
+    
+    const speedLabel = document.createElement('div');
+    speedLabel.style.cssText = `
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 14px;
+        color: #ffffff;
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+    `;
+    speedLabel.textContent = 'KM/H';
+    speedoContainer.appendChild(speedLabel);
+    
+    container.appendChild(speedoContainer);
+    
+    // Store canvas for drawing
+    window.speedometerCanvas = canvas;
+    window.speedometerCtx = canvas.getContext('2d');
+}
+
+function createNitroGauge(container) {
+    const nitroContainer = document.createElement('div');
+    nitroContainer.id = 'nitroGauge';
+    nitroContainer.style.cssText = `
+        position: absolute;
+        bottom: 30px;
+        right: 30px;
+        width: 300px;
+        height: 80px;
+        background: linear-gradient(135deg, rgba(255, 68, 0, 0.2), rgba(255, 0, 0, 0.1));
+        border: 2px solid rgba(255, 68, 0, 0.5);
+        border-radius: 10px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 0 20px rgba(255, 68, 0, 0.3), inset 0 0 20px rgba(255, 68, 0, 0.1);
+        padding: 10px;
+    `;
+    
+    const nitroLabel = document.createElement('div');
+    nitroLabel.style.cssText = `
+        font-size: 14px;
+        color: #ff4400;
+        text-shadow: 0 0 5px rgba(255, 68, 0, 0.8);
+        margin-bottom: 5px;
+        font-weight: bold;
+    `;
+    nitroLabel.textContent = '⚡ NITRO';
+    nitroContainer.appendChild(nitroLabel);
+    
+    const nitroBar = document.createElement('div');
+    nitroBar.id = 'nitroBar';
+    nitroBar.style.cssText = `
+        width: 0%;
+        height: 30px;
+        background: linear-gradient(90deg, #ff4400, #ff8800, #ff4400);
+        background-size: 200% 100%;
+        border-radius: 5px;
+        box-shadow: 0 0 15px rgba(255, 68, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3);
+        transition: width 0.1s ease-out;
+        position: relative;
+        overflow: hidden;
+    `;
+    
+    const nitroShine = document.createElement('div');
+    nitroShine.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+        animation: nitroShine 2s infinite;
+    `;
+    nitroBar.appendChild(nitroShine);
+    
+    nitroContainer.appendChild(nitroBar);
+    container.appendChild(nitroContainer);
+    
+    // Add CSS animation
+    if (!document.getElementById('nitroShineStyle')) {
+        const style = document.createElement('style');
+        style.id = 'nitroShineStyle';
+        style.textContent = `
+            @keyframes nitroShine {
+                0% { left: -100%; }
+                100% { left: 100%; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function createScoreDisplay(container) {
+    const scoreContainer = document.createElement('div');
+    scoreContainer.id = 'scoreDisplay';
+    scoreContainer.style.cssText = `
+        position: absolute;
+        top: 30px;
+        left: 30px;
+        font-size: 48px;
+        font-weight: bold;
+        color: #ffd700;
+        text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.5);
+        animation: scorePulse 2s ease-in-out infinite;
+    `;
+    scoreContainer.innerHTML = `
+        <div style="font-size: 18px; color: #ffffff; margin-bottom: 5px;">SCORE</div>
+        <div id="scoreValue">0</div>
+    `;
+    container.appendChild(scoreContainer);
+    
+    // Add CSS animation
+    if (!document.getElementById('scorePulseStyle')) {
+        const style = document.createElement('style');
+        style.id = 'scorePulseStyle';
+        style.textContent = `
+            @keyframes scorePulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function createCoinCounter(container) {
+    const coinContainer = document.createElement('div');
+    coinContainer.id = 'coinCounter';
+    coinContainer.style.cssText = `
+        position: absolute;
+        top: 30px;
+        right: 30px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 32px;
+        font-weight: bold;
+        color: #ffd700;
+        text-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+    `;
+    coinContainer.innerHTML = `
+        <span style="font-size: 40px; animation: coinRotate 3s linear infinite;">🪙</span>
+        <span id="coinValue">0</span>
+    `;
+    container.appendChild(coinContainer);
+    
+    // Add CSS animation
+    if (!document.getElementById('coinRotateStyle')) {
+        const style = document.createElement('style');
+        style.id = 'coinRotateStyle';
+        style.textContent = `
+            @keyframes coinRotate {
+                0% { transform: rotateY(0deg); }
+                100% { transform: rotateY(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Visual Effects Overlay - Bloom, Glow, Particle Effects
+function createVisualEffectsOverlay(container) {
+    // Create bloom/glow overlay canvas
+    const effectsCanvas = document.createElement('canvas');
+    effectsCanvas.id = 'effectsCanvas';
+    effectsCanvas.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 999;
+        mix-blend-mode: screen;
+        opacity: 0.6;
+    `;
+    container.appendChild(effectsCanvas);
+    
+    window.effectsCanvas = effectsCanvas;
+    window.effectsCtx = effectsCanvas.getContext('2d');
+    effectsCanvas.width = window.innerWidth;
+    effectsCanvas.height = window.innerHeight;
+    
+    // Create particle system overlay
+    createParticleOverlay(container);
+    
+    // Create speed lines effect
+    createSpeedLines(container);
+    
+    // Create lens flare effect
+    createLensFlare(container);
+    
+    // Create chromatic aberration effect
+    createChromaticAberration(container);
+}
+
+function createParticleOverlay(container) {
+    const particleContainer = document.createElement('div');
+    particleContainer.id = 'particleOverlay';
+    particleContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 998;
+        overflow: hidden;
+    `;
+    container.appendChild(particleContainer);
+    
+    // Create floating particles
+    for (let i = 0; i < 50; i++) {
+        const particle = document.createElement('div');
+        particle.style.cssText = `
+            position: absolute;
+            width: ${2 + Math.random() * 3}px;
+            height: ${2 + Math.random() * 3}px;
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.8), transparent);
+            border-radius: 50%;
+            box-shadow: 0 0 ${5 + Math.random() * 10}px rgba(0, 255, 255, 0.6);
+            animation: floatParticle ${10 + Math.random() * 20}s linear infinite;
+            left: ${Math.random() * 100}%;
+            top: ${Math.random() * 100}%;
+            animation-delay: ${Math.random() * 5}s;
+        `;
+        particleContainer.appendChild(particle);
+    }
+    
+    // Add CSS animation
+    if (!document.getElementById('floatParticleStyle')) {
+        const style = document.createElement('style');
+        style.id = 'floatParticleStyle';
+        style.textContent = `
+            @keyframes floatParticle {
+                0% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 1;
+                }
+                90% {
+                    opacity: 1;
+                }
+                100% {
+                    transform: translate(${-100 + Math.random() * 200}px, ${-100 + Math.random() * 200}px) scale(0);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function createSpeedLines(container) {
+    const speedLinesContainer = document.createElement('div');
+    speedLinesContainer.id = 'speedLines';
+    speedLinesContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 997;
+        overflow: hidden;
+    `;
+    container.appendChild(speedLinesContainer);
+    
+    // Create speed lines
+    for (let i = 0; i < 20; i++) {
+        const line = document.createElement('div');
+        line.style.cssText = `
+            position: absolute;
+            width: 2px;
+            height: ${50 + Math.random() * 100}px;
+            background: linear-gradient(to bottom, 
+                rgba(0, 255, 255, 0.8), 
+                rgba(0, 255, 255, 0.4), 
+                transparent);
+            left: ${Math.random() * 100}%;
+            top: -200px;
+            animation: speedLine ${1 + Math.random() * 2}s linear infinite;
+            animation-delay: ${Math.random() * 2}s;
+            opacity: 0;
+        `;
+        speedLinesContainer.appendChild(line);
+    }
+    
+    // Add CSS animation
+    if (!document.getElementById('speedLineStyle')) {
+        const style = document.createElement('style');
+        style.id = 'speedLineStyle';
+        style.textContent = `
+            @keyframes speedLine {
+                0% {
+                    top: -200px;
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 1;
+                }
+                90% {
+                    opacity: 1;
+                }
+                100% {
+                    top: 100%;
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function createLensFlare(container) {
+    const flareContainer = document.createElement('div');
+    flareContainer.id = 'lensFlare';
+    flareContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 996;
+    `;
+    container.appendChild(flareContainer);
+    
+    // Create lens flare elements
+    for (let i = 0; i < 5; i++) {
+        const flare = document.createElement('div');
+        flare.style.cssText = `
+            position: absolute;
+            width: ${100 + i * 50}px;
+            height: ${100 + i * 50}px;
+            border-radius: 50%;
+            background: radial-gradient(circle, 
+                rgba(255, 255, 255, ${0.3 - i * 0.05}), 
+                rgba(255, 255, 200, ${0.2 - i * 0.04}), 
+                transparent);
+            filter: blur(${10 + i * 5}px);
+            animation: lensFlareMove ${10 + i * 2}s ease-in-out infinite;
+            animation-delay: ${i * 2}s;
+        `;
+        flareContainer.appendChild(flare);
+    }
+    
+    // Add CSS animation
+    if (!document.getElementById('lensFlareStyle')) {
+        const style = document.createElement('style');
+        style.id = 'lensFlareStyle';
+        style.textContent = `
+            @keyframes lensFlareMove {
+                0%, 100% {
+                    transform: translate(20%, 20%) scale(1);
+                    opacity: 0.3;
+                }
+                50% {
+                    transform: translate(80%, 80%) scale(1.2);
+                    opacity: 0.6;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function createChromaticAberration(container) {
+    const chromaContainer = document.createElement('div');
+    chromaContainer.id = 'chromaticAberration';
+    chromaContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 995;
+        mix-blend-mode: overlay;
+        opacity: 0.1;
+    `;
+    
+    // Create RGB separation effect
+    const rgbLayers = ['red', 'green', 'blue'];
+    rgbLayers.forEach((color, index) => {
+        const layer = document.createElement('div');
+        layer.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: ${color === 'red' ? 'rgba(255, 0, 0, 0.1)' : 
+                        color === 'green' ? 'rgba(0, 255, 0, 0.1)' : 
+                        'rgba(0, 0, 255, 0.1)'};
+            filter: blur(${1 + index}px);
+            transform: translate(${(index - 1) * 2}px, ${(index - 1) * 2}px);
+            animation: chromaShift ${3 + index}s ease-in-out infinite;
+            animation-delay: ${index * 0.5}s;
+        `;
+        chromaContainer.appendChild(layer);
+    });
+    
+    container.appendChild(chromaContainer);
+    
+    // Add CSS animation
+    if (!document.getElementById('chromaShiftStyle')) {
+        const style = document.createElement('style');
+        style.id = 'chromaShiftStyle';
+        style.textContent = `
+            @keyframes chromaShift {
+                0%, 100% {
+                    transform: translate(${-2}px, ${-2}px);
+                }
+                50% {
+                    transform: translate(${2}px, ${2}px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function updateVisualEffects() {
+    if (!window.effectsCanvas || !window.effectsCtx) return;
+    
+    const ctx = window.effectsCtx;
+    const canvas = window.effectsCanvas;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw bloom/glow effects based on speed
+    const speedFactor = Math.min(carSpeed / 0.8, 1.0);
+    
+    // Draw glow around edges when moving fast
+    if (carSpeed > 0.3) {
+        const gradient = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 0,
+            canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+        );
+        gradient.addColorStop(0, `rgba(0, 255, 255, ${0.1 * speedFactor})`);
+        gradient.addColorStop(0.5, `rgba(0, 255, 255, ${0.05 * speedFactor})`);
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Draw nitro glow effect
+    if (nitroActive) {
+        const nitroGradient = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 0,
+            canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+        );
+        nitroGradient.addColorStop(0, 'rgba(255, 68, 0, 0.3)');
+        nitroGradient.addColorStop(0.3, 'rgba(255, 68, 0, 0.2)');
+        nitroGradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = nitroGradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Update speed lines visibility
+    const speedLines = document.getElementById('speedLines');
+    if (speedLines) {
+        speedLines.style.opacity = Math.min(speedFactor * 0.8, 0.8).toString();
+    }
+}
+
+function createMinimap(container) {
+    const minimapContainer = document.createElement('div');
+    minimapContainer.id = 'minimap';
+    minimapContainer.style.cssText = `
+        position: absolute;
+        top: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 200px;
+        height: 100px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 10px;
+        backdrop-filter: blur(10px);
+        padding: 10px;
+    `;
+    
+    const minimapCanvas = document.createElement('canvas');
+    minimapCanvas.width = 200;
+    minimapCanvas.height = 100;
+    minimapCanvas.style.cssText = `
+        width: 100%;
+        height: 100%;
+    `;
+    minimapContainer.appendChild(minimapCanvas);
+    
+    container.appendChild(minimapContainer);
+    
+    window.minimapCanvas = minimapCanvas;
+    window.minimapCtx = minimapCanvas.getContext('2d');
+}
+
+function updateModernUI() {
+    if (!modernUIInitialized) return;
+    
+    // Update speedometer
+    updateSpeedometer();
+    
+    // Update nitro gauge
+    updateNitroGauge();
+    
+    // Update score
+    const scoreValue = document.getElementById('scoreValue');
+    if (scoreValue) {
+        const currentScore = parseInt(scoreValue.textContent) || 0;
+        const newScore = Math.floor(score);
+        if (newScore !== currentScore) {
+            scoreValue.textContent = newScore.toLocaleString();
+            // Add pulse animation on score change
+            scoreValue.style.animation = 'none';
+            setTimeout(() => {
+                scoreValue.style.animation = 'scorePulse 0.3s ease-out';
+            }, 10);
+        }
+    }
+    
+    // Update coin counter
+    const coinValue = document.getElementById('coinValue');
+    if (coinValue) {
+        coinValue.textContent = coinCount;
+    }
+    
+    // Update speed text
+    const speedText = document.getElementById('speedText');
+    if (speedText) {
+        const speedKmh = Math.floor(carSpeed * 1000);
+        speedText.textContent = speedKmh;
+    }
+    
+    // Update minimap
+    updateMinimap();
+}
+
+function updateSpeedometer() {
+    if (!window.speedometerCanvas || !window.speedometerCtx) return;
+    
+    const ctx = window.speedometerCtx;
+    const canvas = window.speedometerCanvas;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 80;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw speedometer arc
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, Math.PI, 0);
+    ctx.stroke();
+    
+    // Draw speed indicator
+    const speedPercentage = Math.min(carSpeed / 0.8, 1.0);
+    const angle = Math.PI - (speedPercentage * Math.PI);
+    const indicatorLength = radius - 10;
+    
+    ctx.strokeStyle = carSpeed > 0.6 ? '#ff0000' : (carSpeed > 0.3 ? '#ffff00' : '#00ff00');
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+        centerX + Math.cos(angle) * indicatorLength,
+        centerY - Math.sin(angle) * indicatorLength
+    );
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    
+    // Draw speed marks
+    for (let i = 0; i <= 10; i++) {
+        const markAngle = Math.PI - (i / 10) * Math.PI;
+        const markLength = i % 5 === 0 ? 15 : 8;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(
+            centerX + Math.cos(markAngle) * (radius - markLength),
+            centerY - Math.sin(markAngle) * (radius - markLength)
+        );
+        ctx.lineTo(
+            centerX + Math.cos(markAngle) * radius,
+            centerY - Math.sin(markAngle) * radius
+        );
+        ctx.stroke();
+    }
+}
+
+function updateNitroGauge() {
+    const nitroBar = document.getElementById('nitroBar');
+    if (!nitroBar) return;
+    
+    // Simulate nitro level (you can adjust this based on actual nitro system)
+    const nitroLevel = nitroActive ? 100 : Math.min(100, (score % 500) / 5);
+    nitroBar.style.width = nitroLevel + '%';
+    
+    // Add pulsing effect when nitro is active
+    if (nitroActive) {
+        nitroBar.style.animation = 'nitroPulse 0.5s ease-in-out infinite';
+        if (!document.getElementById('nitroPulseStyle')) {
+            const style = document.createElement('style');
+            style.id = 'nitroPulseStyle';
+            style.textContent = `
+                @keyframes nitroPulse {
+                    0%, 100% { box-shadow: 0 0 15px rgba(255, 68, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3); }
+                    50% { box-shadow: 0 0 30px rgba(255, 68, 0, 1), inset 0 0 20px rgba(255, 255, 255, 0.5); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    } else {
+        nitroBar.style.animation = 'none';
+    }
+}
+
+function updateVisualEffects() {
+    if (!window.effectsCanvas || !window.effectsCtx) return;
+    
+    const ctx = window.effectsCtx;
+    const canvas = window.effectsCanvas;
+    
+    // Resize canvas if needed
+    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw bloom/glow effects based on speed
+    const speedFactor = Math.min(carSpeed / 0.8, 1.0);
+    
+    // Draw glow around edges when moving fast
+    if (carSpeed > 0.3) {
+        const gradient = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 0,
+            canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+        );
+        gradient.addColorStop(0, `rgba(0, 255, 255, ${0.1 * speedFactor})`);
+        gradient.addColorStop(0.5, `rgba(0, 255, 255, ${0.05 * speedFactor})`);
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Draw nitro glow effect
+    if (nitroActive) {
+        const nitroGradient = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 0,
+            canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+        );
+        nitroGradient.addColorStop(0, 'rgba(255, 68, 0, 0.3)');
+        nitroGradient.addColorStop(0.3, 'rgba(255, 68, 0, 0.2)');
+        nitroGradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = nitroGradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Update speed lines visibility
+    const speedLines = document.getElementById('speedLines');
+    if (speedLines) {
+        speedLines.style.opacity = Math.min(speedFactor * 0.8, 0.8).toString();
+    }
+}
+
+function updateMinimap() {
+    if (!window.minimapCanvas || !window.minimapCtx) return;
+    
+    const ctx = window.minimapCtx;
+    const canvas = window.minimapCanvas;
+    const ROAD_WIDTH = 8; // Road width constant
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw road
+    ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+    ctx.fillRect(0, canvas.height / 2 - 10, canvas.width, 20);
+    
+    // Draw player car
+    ctx.fillStyle = '#00ffff';
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = '#00ffff';
+    ctx.fillRect(canvas.width / 2 - 5, canvas.height / 2 - 5, 10, 10);
+    ctx.shadowBlur = 0;
+    
+    // Draw obstacles
+    if (obstacles) {
+        obstacles.forEach(obs => {
+            if (!obs || !obs.position) return;
+            const distance = obs.position.z - carZ;
+            if (Math.abs(distance) < 50) {
+                const x = canvas.width / 2 + (obs.position.x / ROAD_WIDTH) * (canvas.width / 2);
+                const y = canvas.height / 2 - (distance / 50) * (canvas.height / 2);
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(x - 3, y - 3, 6, 6);
+            }
+        });
+    }
+    
+    // Draw coins
+    if (coins && coins.length > 0) {
+        coins.forEach(coin => {
+            if (!coin || !coin.position) return;
+            const distance = coin.position.z - carZ;
+            if (Math.abs(distance) < 50) {
+                const x = canvas.width / 2 + (coin.position.x / ROAD_WIDTH) * (canvas.width / 2);
+                const y = canvas.height / 2 - (distance / 50) * (canvas.height / 2);
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+    }
 }
 
 
 function setupDayLighting() {
-    
-    sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    // Gündüz modu - biraz daha karanlık atmosfer
+    sunLight = new THREE.DirectionalLight(0xffffff, 0.9); // 1.2'den 0.9'a düşürüldü
     sunLight.position.set(100, 100, 50);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
@@ -695,8 +1735,8 @@ function setupDayLighting() {
 
 
 function setupNightLighting() {
-    
-    moonLight = new THREE.DirectionalLight(0xaabbff, 1.5); 
+    // Gece modu - biraz daha karanlık atmosfer
+    moonLight = new THREE.DirectionalLight(0xaabbff, 1.0); // 1.5'ten 1.0'a düşürüldü
     moonLight.position.set(0, 80, -40); 
     moonLight.castShadow = true;
     moonLight.shadow.mapSize.width = 2048;
@@ -986,59 +2026,104 @@ async function loadCarModel() {
         nitroSpriteLeft.visible = false;
         nitroSpriteRight.visible = false;
         
+        // Nitro glow efektleri - neon mavi
         nitroGlow = new THREE.Mesh(
-            new THREE.SphereGeometry(0.12, 16, 8),
-            new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
+            new THREE.SphereGeometry(0.15, 16, 8),
+            new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 })
         );
         nitroGlow.position.set(0, 0.22, -2.05);
+        nitroGlow.userData.isNitroGlow = true;
         playerCar.add(nitroGlow);
 
         nitroLeft = new THREE.Mesh(
-            new THREE.SphereGeometry(0.12, 16, 8),
-            new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
+            new THREE.SphereGeometry(0.15, 16, 8),
+            new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 })
         );
         nitroLeft.position.set(-0.18, 0.22, -1.05);
+        nitroLeft.userData.isNitroGlow = true;
         playerCar.add(nitroLeft);
 
         nitroRight = new THREE.Mesh(
-            new THREE.SphereGeometry(0.12, 16, 8),
-            new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
+            new THREE.SphereGeometry(0.15, 16, 8),
+            new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 })
         );
         nitroRight.position.set(0.18, 0.22, -1.05);
+        nitroRight.userData.isNitroGlow = true;
         playerCar.add(nitroRight);
 
         
-        const headlightLeft = new THREE.SpotLight(0xffffff, isNightMode ? 2.0 : 1.2, 15, Math.PI / 6, 0.4);
-        headlightLeft.position.set(-0.3, 0.5, 1.0);
-        headlightLeft.castShadow = true;
-        headlightLeft.shadow.mapSize.width = 512;
-        headlightLeft.shadow.mapSize.height = 512;
-        headlightLeft.shadow.camera.near = 0.2;
-        headlightLeft.shadow.camera.far = 15;
+        // Gerçekçi far ışıkları - gerçek hayattaki gibi
+        // Sıcak beyaz renk (0xffffcc) ve yumuşak geçişler
+        const headlightColor = 0xffffcc; // Sıcak beyaz (gerçek araba farları gibi)
+        const headlightIntensity = isNightMode ? 5.0 : 3.5;
+        const headlightDistance = 35; // Daha uzun mesafe
+        const headlightAngle = Math.PI / 5; // 36 derece - gerçekçi açı
+        const headlightPenumbra = 0.7; // Yumuşak kenar geçişi
+        
+        const headlightLeft = new THREE.SpotLight(
+            headlightColor, 
+            headlightIntensity, 
+            headlightDistance, 
+            headlightAngle, 
+            headlightPenumbra
+        );
+        headlightLeft.position.set(-0.3, 0.4, 1.0); // Biraz daha aşağı - yol yüzeyine odaklanır
+        headlightLeft.castShadow = false;
+        headlightLeft.decay = 2; // Mesafeye göre azalan intensity (gerçekçi)
+        headlightLeft.userData.isHeadlight = true; // Collision detection'dan hariç
         
         const leftTarget = new THREE.Object3D();
-        leftTarget.position.set(-1, 0, 15);
+        leftTarget.position.set(-0.8, -0.5, 30); // Yol yüzeyine odaklanmış
+        leftTarget.userData.isLightTarget = true; // Collision detection'dan hariç
         playerCar.add(leftTarget);
         headlightLeft.target = leftTarget;
         
         playerCar.add(headlightLeft);
 
-        const headlightRight = new THREE.SpotLight(0xffffff, isNightMode ? 2.0 : 1.2, 15, Math.PI / 6, 0.4);
-        headlightRight.position.set(0.3, 0.5, 1.0);
-        headlightRight.castShadow = true;
-        headlightRight.shadow.mapSize.width = 512;
-        headlightRight.shadow.mapSize.height = 512;
-        headlightRight.shadow.camera.near = 0.2;
-        headlightRight.shadow.camera.far = 15;
+        const headlightRight = new THREE.SpotLight(
+            headlightColor, 
+            headlightIntensity, 
+            headlightDistance, 
+            headlightAngle, 
+            headlightPenumbra
+        );
+        headlightRight.position.set(0.3, 0.4, 1.0);
+        headlightRight.castShadow = false;
+        headlightRight.decay = 2; // Mesafeye göre azalan intensity
+        headlightRight.userData.isHeadlight = true; // Collision detection'dan hariç
         
         const rightTarget = new THREE.Object3D();
-        rightTarget.position.set(1, 0, 15);
+        rightTarget.position.set(0.8, -0.5, 30); // Yol yüzeyine odaklanmış
+        rightTarget.userData.isLightTarget = true; // Collision detection'dan hariç
         playerCar.add(rightTarget);
         headlightRight.target = rightTarget;
         
         playerCar.add(headlightRight);
 
         carHeadlights.push(headlightLeft, headlightRight);
+        
+        // Arabanın önündeki alanı aydınlatmak için geniş açılı doldurma ışığı
+        // Gerçek hayatta farların birleştiği alanı simüle eder
+        const frontFillLight = new THREE.SpotLight(
+            headlightColor, 
+            isNightMode ? 3.0 : 2.2, 
+            28, 
+            Math.PI / 2.5, // Daha geniş açı
+            0.6 // Yumuşak kenar
+        );
+        frontFillLight.position.set(0, 0.8, 1.1);
+        frontFillLight.castShadow = false;
+        frontFillLight.decay = 2;
+        frontFillLight.userData.isHeadlight = true; // Collision detection'dan hariç
+        
+        const frontTarget = new THREE.Object3D();
+        frontTarget.position.set(0, -0.8, 25); // Yol yüzeyine odaklanmış
+        frontTarget.userData.isLightTarget = true; // Collision detection'dan hariç
+        playerCar.add(frontTarget);
+        frontFillLight.target = frontTarget;
+        
+        playerCar.add(frontFillLight);
+        carHeadlights.push(frontFillLight);
 
         
         const headlightGlowLeft = new THREE.Mesh(
@@ -1064,32 +2149,95 @@ async function loadCarModel() {
         playerCar.add(headlightGlowRight);
 
         
-        const nitroLightLeft = new THREE.PointLight(0xff4400, 0, 8);
+        // FREN IŞIKLARI - Fren yapınca kırmızı ışık çıkar
+        const brakeLightLeft = new THREE.PointLight(0xff0000, 0, 6);
+        brakeLightLeft.position.set(-0.32, 0.28, -1.12);
+        brakeLightLeft.userData.isBrakeLight = true;
+        playerCar.add(brakeLightLeft);
+
+        const brakeLightRight = new THREE.PointLight(0xff0000, 0, 6);
+        brakeLightRight.position.set(0.32, 0.28, -1.12);
+        brakeLightRight.userData.isBrakeLight = true;
+        playerCar.add(brakeLightRight);
+
+        // NITRO IŞIKLARI - Nitro aktifken neon mavi ışık çıkar (gerçek oyunlardaki gibi)
+        const nitroLightLeft = new THREE.PointLight(0x00ffff, 0, 10); // Neon mavi
         nitroLightLeft.position.set(-0.18, 0.22, -1.05);
+        nitroLightLeft.userData.isNitroLight = true;
         playerCar.add(nitroLightLeft);
 
-        const nitroLightRight = new THREE.PointLight(0xff4400, 0, 8);
+        const nitroLightRight = new THREE.PointLight(0x00ffff, 0, 10); // Neon mavi
         nitroLightRight.position.set(0.18, 0.22, -1.05);
+        nitroLightRight.userData.isNitroLight = true;
         playerCar.add(nitroLightRight);
 
-        nitroLights.push(nitroLightLeft, nitroLightRight);
+        // Nitro volumetric efektleri - neon mavi ışık ışınları (daha uzun ve etkileyici)
+        const nitroVolumetricLeft = new THREE.Mesh(
+            new THREE.ConeGeometry(0.6, 12, 12, 1, true),
+            new THREE.MeshBasicMaterial({
+                color: 0x00ffff, // Neon mavi
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.FrontSide,
+                depthWrite: false
+            })
+        );
+        nitroVolumetricLeft.position.set(-0.18, 0.22, -1.05);
+        nitroVolumetricLeft.rotation.x = -Math.PI / 2; // Arkaya doğru (dar ucu arabanın arkasında, geniş ucu arkaya)
+        nitroVolumetricLeft.visible = false;
+        nitroVolumetricLeft.userData.isNitroVolumetric = true;
+        playerCar.add(nitroVolumetricLeft);
+
+        const nitroVolumetricRight = new THREE.Mesh(
+            new THREE.ConeGeometry(0.6, 12, 12, 1, true),
+            new THREE.MeshBasicMaterial({
+                color: 0x00ffff, // Neon mavi
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.FrontSide,
+                depthWrite: false
+            })
+        );
+        nitroVolumetricRight.position.set(0.18, 0.22, -1.05);
+        nitroVolumetricRight.rotation.x = -Math.PI / 2; // Arkaya doğru (dar ucu arabanın arkasında, geniş ucu arkaya)
+        nitroVolumetricRight.visible = false;
+        nitroVolumetricRight.userData.isNitroVolumetric = true;
+        playerCar.add(nitroVolumetricRight);
+        
+        // Merkez nitro volumetric efekt - daha büyük ve etkileyici
+        const nitroVolumetricCenter = new THREE.Mesh(
+            new THREE.ConeGeometry(0.8, 15, 12, 1, true),
+            new THREE.MeshBasicMaterial({
+                color: 0x00ffff, // Neon mavi
+                transparent: true,
+                opacity: 0.4,
+                side: THREE.FrontSide,
+                depthWrite: false
+            })
+        );
+        nitroVolumetricCenter.position.set(0, 0.22, -1.8);
+        nitroVolumetricCenter.rotation.x = -Math.PI / 2; // Arkaya doğru
+        nitroVolumetricCenter.visible = false;
+        nitroVolumetricCenter.userData.isNitroVolumetric = true;
+        playerCar.add(nitroVolumetricCenter);
+
+        nitroLights.push(nitroLightLeft, nitroLightRight, brakeLightLeft, brakeLightRight);
+        
+        // Nitro volumetric efektlerini sakla
+        if (!window.nitroVolumetricMeshes) {
+            window.nitroVolumetricMeshes = [];
+        }
+        window.nitroVolumetricMeshes.push(nitroVolumetricLeft, nitroVolumetricRight, nitroVolumetricCenter);
 
         nitroGlow.visible = false;
         nitroLeft.visible = false;
         nitroRight.visible = false;
         
-        const nitroTailLightLeft = new THREE.PointLight(0xff0000, 0, 5);
-        nitroTailLightLeft.position.set(-0.32, 0.28, -1.12);
-        playerCar.add(nitroTailLightLeft);
-
-        const nitroTailLightRight = new THREE.PointLight(0xff0000, 0, 5);
-        nitroTailLightRight.position.set(0.32, 0.28, -1.12);
-        playerCar.add(nitroTailLightRight);
-
-        nitroLights.push(nitroLightLeft, nitroLightRight, nitroTailLightLeft, nitroTailLightRight);
-        
         
         createSteeringWheel();
+        
+        // Create volumetric lights for car headlights
+        createCarVolumetricLights();
         
         console.log(`✅ ${selectedCar.name} modeli başarıyla yüklendi!`);
         
@@ -1590,7 +2738,7 @@ function createObstacles() {
     obstacles.forEach(obstacle => scene.remove(obstacle));
     obstacles = [];
 
-    const obstacleCount = 500;
+    const obstacleCount = 20;
     for (let i = 0; i < obstacleCount; i++) {
         const lane = Math.floor(Math.random() * 4);
         const z = (i + 3) * 6 + Math.random() * 3;
@@ -1906,31 +3054,94 @@ if (carSpeed < targetSpeed) {
 // Minimum hız kontrolü
 carSpeed = Math.max(0.05, carSpeed);
 
-// NITRO EFEKTLERİ
+// FREN IŞIKLARI - Fren yapınca kırmızı ışık çıkar
+if (brakeActive) {
+    nitroLights.forEach(light => {
+        if (light.userData && light.userData.isBrakeLight) {
+            light.intensity = 3.0 + Math.sin(Date.now() * 0.05) * 0.5; // Kırmızı fren ışığı
+            light.color.setHex(0xff0000); // Kırmızı
+        }
+    });
+} else {
+    // Fren yapılmıyorsa fren ışıklarını kapat
+    nitroLights.forEach(light => {
+        if (light.userData && light.userData.isBrakeLight) {
+            light.intensity = 0;
+        }
+    });
+}
+
+// NITRO EFEKTLERİ - Nitro aktifken neon mavi ışık çıkar (geliştirilmiş ve daha etkileyici)
 if (nitroActive) {
     nitroSpriteLeft.visible = true;
     nitroSpriteRight.visible = true;
+    
+    // Nitro sprite'ları daha büyük ve parlak yap
+    if (nitroSpriteLeft && nitroSpriteRight) {
+        const scale = 0.7 + Math.sin(Date.now() * 0.05) * 0.2; // Pulse efekti
+        nitroSpriteLeft.scale.set(scale, scale, 1);
+        nitroSpriteRight.scale.set(scale, scale, 1);
+    }
+    
     if (nitroGlow && nitroLeft && nitroRight) {
         nitroGlow.visible = true;
         nitroLeft.visible = true;
         nitroRight.visible = true;
     }
+    
     const time = Date.now() * 0.01;
+    const pulseSpeed = 0.03; // Daha hızlı pulse
+    
+    // Nitro glow efektleri - daha parlak ve dinamik
     if (nitroLeft && nitroRight && nitroGlow) {
-        nitroLeft.material.opacity = 0.5 + Math.sin(time) * 0.2;
-        nitroRight.material.opacity = 0.5 + Math.sin(time + 1) * 0.2;
-        nitroGlow.material.opacity = 0.3 + Math.sin(time * 1.5) * 0.2;
+        const baseOpacity = 0.7;
+        const pulseAmount = 0.3;
+        nitroLeft.material.opacity = baseOpacity + Math.sin(time * 2) * pulseAmount;
+        nitroRight.material.opacity = baseOpacity + Math.sin(time * 2 + 1) * pulseAmount;
+        nitroGlow.material.opacity = baseOpacity + Math.sin(time * 3) * pulseAmount;
+        
+        // Renk değişimi - neon mavi tonları
+        const colorIntensity = 0.8 + Math.sin(time * 1.5) * 0.2;
+        nitroLeft.material.color.setRGB(0, colorIntensity, colorIntensity);
+        nitroRight.material.color.setRGB(0, colorIntensity, colorIntensity);
+        nitroGlow.material.color.setRGB(0, colorIntensity, colorIntensity);
     }
     
-    // Nitro ışık efektleri
+    // Nitro neon mavi ışık efektleri (gerçek oyunlardaki gibi) - daha güçlü
     nitroLights.forEach(light => {
-        light.intensity = 2 + Math.random() * 0.5; 
+        if (light.userData && light.userData.isNitroLight) {
+            const intensity = 6.0 + Math.sin(Date.now() * 0.04) * 2.0; // Daha güçlü ve dinamik
+            light.intensity = intensity;
+            light.color.setHex(0x00ffff); // Neon mavi
+            light.distance = 15; // Daha uzun mesafe
+        }
     });
     
-    // Far ışık efektleri
-    carHeadlights.forEach(headlight => {
-        headlight.intensity = 2 + Math.random() * 0.3; 
-        headlight.color.setHex(0xaaffff); 
+    // Nitro volumetric efektleri - neon mavi ışık ışınları (daha etkileyici)
+    if (window.nitroVolumetricMeshes) {
+        window.nitroVolumetricMeshes.forEach((mesh, index) => {
+            mesh.visible = true;
+            const baseOpacity = index === 2 ? 0.5 : 0.6; // Merkez daha şeffaf
+            const pulseAmount = 0.3;
+            mesh.material.opacity = baseOpacity + Math.sin(Date.now() * 0.025 + index) * pulseAmount;
+            
+            // Renk değişimi - parlak neon mavi
+            const colorIntensity = 0.9 + Math.sin(Date.now() * 0.02 + index) * 0.1;
+            mesh.material.color.setRGB(0, colorIntensity, colorIntensity);
+        });
+    }
+    
+    // Far ışık efektleri - nitro aktifken daha güçlü (renk değişmez, sadece intensity artar)
+    carHeadlights.forEach((headlight, index) => {
+        if (index < 2) {
+            // Ana farlar - nitro aktifken daha güçlü
+            headlight.intensity = (isNightMode ? 6.0 : 4.5) + Math.random() * 0.3; 
+        } else {
+            // Ön doldurma ışığı
+            headlight.intensity = (isNightMode ? 3.5 : 2.8) + Math.random() * 0.2;
+        }
+        // Farlar sıcak beyaz kalır (nitro mavi değil)
+        headlight.color.setHex(0xffffcc); 
     });
 } else {
     nitroSpriteLeft.visible = false;
@@ -1943,18 +3154,31 @@ if (nitroActive) {
     
     // Nitro ışıklarını kapat
     nitroLights.forEach(light => {
+        if (light.userData && light.userData.isNitroLight) {
         light.intensity = 0;
+        }
     });
     
-    // Farları normale döndür
-    carHeadlights.forEach(headlight => {
-        headlight.intensity = 1; 
-        headlight.color.setHex(0xffffff); 
+    // Nitro volumetric efektlerini gizle
+    if (window.nitroVolumetricMeshes) {
+        window.nitroVolumetricMeshes.forEach(mesh => {
+            mesh.visible = false;
+        });
+    }
+    
+    // Farları normale döndür - gerçekçi sıcak beyaz renk
+    carHeadlights.forEach((headlight, index) => {
+        if (index < 2) {
+            // Ana farlar - önündeki alanı aydınlatmak için güçlü
+            headlight.intensity = isNightMode ? 5.0 : 3.5; 
+        } else {
+            // Ön doldurma ışığı
+            headlight.intensity = isNightMode ? 3.0 : 2.2;
+        }
+        // Gerçekçi sıcak beyaz renk (0xffffcc)
+        headlight.color.setHex(0xffffcc); 
     });
 }
-
-// HIZ GÖSTERGE GÜNCELLEMESİ
-document.getElementById('speedValue').textContent = Math.floor(carSpeed * 1000);
 
 // OTOMATİK HARİTA DEĞİŞİMİ
 if (coinCount >= COINS_PER_MAP_CHANGE) {
@@ -2108,13 +3332,14 @@ updateObstacles();
 updateCoins();
 updateWeatherEffects();
 
-// UI GÜNCELLEMELERİ
-document.getElementById('score').textContent = Math.floor(score);
+// UI GÜNCELLEMELERİ - Modern UI
+updateModernUI();
 
-const coinDisplayElement = document.getElementById('coinDisplay');
-if (coinDisplayElement) {
-    coinDisplayElement.textContent = coinCount;
-}
+// Visual Effects Updates
+updateVisualEffects();
+
+// Advanced Lighting Updates
+updateDynamicLighting();
 
 // RENDER
 renderer.render(scene, camera);
@@ -2125,6 +3350,11 @@ if (Math.floor(Date.now() / 5000) !== Math.floor((Date.now() - 16) / 5000)) {
 }
 
 // SONRAKI FRAME
+  // Update UI
+  if (modernUIInitialized) {
+      updateModernUI();
+  }
+  
 requestAnimationFrame(gameLoop);
 }
 
@@ -2195,10 +3425,8 @@ function updateObstacles() {
     const carIsHighEnough = isCarInAir() && playerCar && playerCar.position.y > obstacle.position.y + 1.5;
     
     if (!carIsHighEnough) {
-        
-        const playerBox = new THREE.Box3().setFromObject(playerCar);
-        const obstacleBox = new THREE.Box3().setFromObject(obstacle);
-        if (playerBox.intersectsBox(obstacleBox)) {
+        // checkCollision fonksiyonunu kullan - daha tutarlı
+        if (checkCollision(obstacle, playerCar)) {
             console.log('💥 ÇARPIŞMA! Araba havada değil veya yeterince yüksek değil');
             gameOver();
             return;
@@ -2418,59 +3646,51 @@ function onWindowResize() {
 
 
 function createGameUI() {
- 
- const uiContainer = document.createElement('div');
- uiContainer.style.position = 'absolute';
- uiContainer.style.top = '20px';
- uiContainer.style.left = '20px';
- uiContainer.style.zIndex = '100';
- uiContainer.style.fontFamily = 'Arial, sans-serif';
- uiContainer.style.color = '#FFFFFF';
- uiContainer.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
- 
- 
- const scoreDiv = document.createElement('div');
- scoreDiv.innerHTML = '<h3>Puan: <span id="score">0</span></h3>';
- uiContainer.appendChild(scoreDiv);
- 
- 
- const coinDiv = document.createElement('div');
- coinDiv.innerHTML = '<h3>Coin: <span id="coinDisplay">0</span></h3>';
- uiContainer.appendChild(coinDiv);
- 
- 
- const speedDiv = document.createElement('div');
- speedDiv.innerHTML = '<h3>Hız: <span id="speedValue">100</span> km/h</h3>';
- uiContainer.appendChild(speedDiv);
- 
- 
- const controlsDiv = document.createElement('div');
- controlsDiv.style.marginTop = '20px';
- controlsDiv.style.fontSize = '14px';
- controlsDiv.innerHTML = `
-   <p><strong>Kontroller:</strong></p>
-   <p>← → Ok Tuşları: Araç Şerit Değiştirme</p>
-   <p><strong>SPACE: ZIPLAMA 🦘 (Engelleri Aş!)</strong></p>
-   <p>Shift/N: Nitro | Ctrl/B: Fren</p>
-   <p>C: Kamera Değiştir (3 Mod)</p>
-   <p>P: Müzik Aç/Kapat 🎵</p>
-   ${isNightMode ? '<p style="color: #FFD700;">🌙 GECE MODU:</p><p>M: Ay Hareket Modu | WASD: Ay Kontrolü</p><p style="color: #FFB6C1;">(Ok tuşları her zaman araç için kullanılır)</p>' : ''}
-   <p>Altın coinleri toplayın!</p>
-   <p>Her ${COINS_PER_MAP_CHANGE} coin = Yeni Harita!</p>
-   <p style="color: #FFD700;">🎯 Zıpla ve engelleri aşarak bonus puan kazan!</p>
- `;
- uiContainer.appendChild(controlsDiv);
- 
- document.body.appendChild(uiContainer);
+    // Create modern UI instead of old UI
+    createModernUI();
+    
+    // Create controls panel (smaller, modern design)
+    const controlsContainer = document.createElement('div');
+    controlsContainer.id = 'controlsPanel';
+    controlsContainer.style.cssText = `
+        position: fixed;
+        bottom: 30px;
+        left: 250px;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        padding: 15px;
+        font-size: 12px;
+        color: #ffffff;
+        max-width: 300px;
+        pointer-events: auto;
+        z-index: 1001;
+    `;
+    controlsContainer.innerHTML = `
+        <div style="font-weight: bold; margin-bottom: 10px; color: #00ffff;">🎮 KONTROLLER</div>
+        <div style="margin-bottom: 5px;">← → : Şerit Değiştir</div>
+        <div style="margin-bottom: 5px;"><strong>SPACE: ZIPLAMA 🦘</strong></div>
+        <div style="margin-bottom: 5px;">Shift/N: Nitro | Ctrl/B: Fren</div>
+        <div style="margin-bottom: 5px;">C: Kamera | P: Müzik</div>
+        ${isNightMode ? '<div style="margin-top: 10px; color: #FFD700;">🌙 GECE MODU: M + WASD</div>' : ''}
+    `;
+    document.body.appendChild(controlsContainer);
 }
 
 
 function createCanvas() {
- const canvas = document.createElement('canvas');
+    // Canvas zaten varsa onu kullan
+    let canvas = document.getElementById('gameCanvas');
+    if (!canvas) {
+        canvas = document.createElement('canvas');
  canvas.id = 'gameCanvas';
+        document.body.appendChild(canvas);
+    }
  canvas.style.display = 'block';
  canvas.style.margin = '0 auto';
- document.body.appendChild(canvas);
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
  return canvas;
 }
 
@@ -2480,12 +3700,31 @@ function createCanvas() {
 
 
 async function loadCarModelsForSelection() {
+    // Eğer modeller zaten yüklenmişse tekrar yükleme
+    if (loadedCarModels && loadedCarModels.length === AVAILABLE_CARS.length && loadedCarModels.every(m => m !== null)) {
+        console.log('✅ Modeller zaten yüklü, tekrar yükleme atlanıyor');
+        return;
+    }
+    
     console.log('🚗 Araç seçim ekranı için modeller yükleniyor...');
     console.log('📂 Yüklenecek araç sayısı:', AVAILABLE_CARS.length);
     
-    loadedCarModels = [];
+    // Sadece boşsa veya eksikse başlat
+    if (!loadedCarModels || loadedCarModels.length === 0) {
+        loadedCarModels = new Array(AVAILABLE_CARS.length).fill(null);
+    } else if (loadedCarModels.length < AVAILABLE_CARS.length) {
+        // Diziyi genişlet
+        while (loadedCarModels.length < AVAILABLE_CARS.length) {
+            loadedCarModels.push(null);
+        }
+    }
     
     for (let i = 0; i < AVAILABLE_CARS.length; i++) {
+        // Eğer bu model zaten yüklenmişse atla
+        if (loadedCarModels[i] && loadedCarModels[i] !== null) {
+            console.log(`⏭️ ${AVAILABLE_CARS[i].name} zaten yüklü, atlanıyor`);
+            continue;
+        }
         try {
             const car = AVAILABLE_CARS[i];
             console.log(`🔄 ${i + 1}/${AVAILABLE_CARS.length} - ${car.name} yükleniyor...`);
@@ -2520,19 +3759,664 @@ async function loadCarModelsForSelection() {
                 }
             });
             
-            loadedCarModels.push(carModel);
-            console.log(`✅ ${car.name} modeli hazırlandı`);
+            // Diziyi gerekirse genişlet ve doğru index'e ekle
+            if (loadedCarModels.length <= i) {
+                while (loadedCarModels.length <= i) {
+                    loadedCarModels.push(null);
+                }
+            }
+            loadedCarModels[i] = carModel;
+            console.log(`✅ ${car.name} modeli hazırlandı ve index ${i}'ye eklendi (Toplam: ${loadedCarModels.filter(m => m !== null).length}/${AVAILABLE_CARS.length})`);
             
         } catch (error) {
             console.warn(`⚠️ ${AVAILABLE_CARS[i].name} modeli yüklenemedi:`, error);
+            // Diziyi gerekirse genişlet
+            if (loadedCarModels.length <= i) {
+                while (loadedCarModels.length <= i) {
             loadedCarModels.push(null);
+                }
+            }
+            loadedCarModels[i] = null;
         }
     }
     
     console.log('🎯 Araç yükleme tamamlandı. Başarılı:', loadedCarModels.filter(m => m !== null).length);
     console.log('❌ Başarısız:', loadedCarModels.filter(m => m === null).length);
+    console.log('📊 Yüklenmiş modeller dizisi:', loadedCarModels.map((m, i) => m ? `${i}:${AVAILABLE_CARS[i].name}` : `${i}:null`).join(', '));
+    
+    // Başlık ikonlarını güncelle (eğer menü açıksa)
+    const leftIcon = document.getElementById('leftTitleCarIcon');
+    const rightIcon = document.getElementById('rightTitleCarIcon');
+    if (leftIcon && rightIcon && (leftIcon.innerHTML.includes('🚗') || rightIcon.innerHTML.includes('🚗'))) {
+        console.log('🔄 Başlık ikonları güncelleniyor...');
+        leftIcon.innerHTML = '';
+        rightIcon.innerHTML = '';
+        if (loadedCarModels[0] && loadedCarModels[AVAILABLE_CARS.length - 1]) {
+            createMiniature3DCarIcon(leftIcon, 0);
+            createMiniature3DCarIcon(rightIcon, AVAILABLE_CARS.length - 1);
+        }
+    }
 }
 
+// Minyatür 3D araba ikonu oluştur (başlık için)
+function createMiniature3DCarIcon(container, carIndex) {
+    if (!container || carIndex < 0 || carIndex >= AVAILABLE_CARS.length) {
+        // Fallback: emoji göster
+        container.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+        return;
+    }
+    
+    // Canvas oluştur
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    container.appendChild(canvas);
+    
+    // Three.js scene oluştur
+    const scene = new THREE.Scene();
+    scene.background = null; // Şeffaf arka plan
+    
+    // Kamera
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+    camera.position.set(0, 2, 5);
+    camera.lookAt(0, 0, 0);
+    
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ 
+        canvas: canvas, 
+        alpha: true, 
+        antialias: true 
+    });
+    renderer.setSize(160, 160);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    // Işıklandırma
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 5);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+    
+    const pointLight = new THREE.PointLight(0x00ffff, 0.5);
+    pointLight.position.set(-3, 3, 3);
+    scene.add(pointLight);
+    
+    // Araba modelini yükle ve ekle
+    const car = AVAILABLE_CARS[carIndex];
+    let carModel = null;
+    let animationId = null;
+    
+    // Model yükleme fonksiyonu
+    const loadAndSetupModel = (model) => {
+        if (!model) return;
+        
+        carModel = model.clone();
+        carModel.scale.set(car.scale * 0.3, car.scale * 0.3, car.scale * 0.3); // Minyatür boyut
+        carModel.position.set(0, 0, 0);
+        carModel.rotation.y = Math.PI / 4; // 45 derece döndür
+        
+        carModel.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        
+        scene.add(carModel);
+        
+        // Animasyon döngüsünü başlat
+        let rotationAngle = 0;
+        const animate = () => {
+            animationId = requestAnimationFrame(animate);
+            
+            if (!carModel || !carModel.parent) {
+                cancelAnimationFrame(animationId);
+                return;
+            }
+            
+            rotationAngle += 0.01;
+            carModel.rotation.y = Math.PI / 4 + Math.sin(rotationAngle) * 0.2; // Hafif sallanma
+            carModel.position.y = Math.sin(rotationAngle * 2) * 0.1; // Yukarı-aşağı hareket
+            
+            // Kamerayı döndür (360 derece dönüş)
+            camera.position.x = Math.cos(rotationAngle * 0.3) * 5;
+            camera.position.z = Math.sin(rotationAngle * 0.3) * 5;
+            camera.lookAt(0, 0, 0);
+            
+            renderer.render(scene, camera);
+        };
+        
+        animate();
+    };
+    
+    // Önce yüklenmiş modelleri kontrol et
+    if (loadedCarModels && loadedCarModels[carIndex] && loadedCarModels[carIndex] !== null) {
+        loadAndSetupModel(loadedCarModels[carIndex]);
+    } else {
+        // Model henüz yüklenmemişse yükle
+        if (!loader) {
+            console.warn('⚠️ GLTFLoader bulunamadı, emoji gösteriliyor');
+            container.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+            return;
+        }
+        
+        loader.load(
+            car.path,
+            (gltf) => {
+                loadAndSetupModel(gltf.scene);
+            },
+            undefined,
+            (error) => {
+                console.warn(`⚠️ Minyatür araba ikonu yüklenemedi:`, error);
+                // Fallback: emoji göster
+                container.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+            }
+        );
+    }
+}
+
+// Create animated background for car selection menu
+function createAnimatedBackground(container) {
+    const bgContainer = document.createElement('div');
+    bgContainer.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 0;
+        overflow: hidden;
+    `;
+    
+    // Create floating particles
+    for (let i = 0; i < 150; i++) {
+        const particle = document.createElement('div');
+        particle.style.cssText = `
+            position: absolute;
+            width: ${2 + Math.random() * 5}px;
+            height: ${2 + Math.random() * 5}px;
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.9), transparent);
+            border-radius: 50%;
+            box-shadow: 0 0 ${8 + Math.random() * 15}px rgba(0, 255, 255, 0.8);
+            left: ${Math.random() * 100}%;
+            top: ${Math.random() * 100}%;
+            animation: floatParticleBG ${15 + Math.random() * 25}s linear infinite;
+            animation-delay: ${Math.random() * 5}s;
+        `;
+        bgContainer.appendChild(particle);
+    }
+    
+    container.appendChild(bgContainer);
+    
+    // Add CSS animation if not exists
+    if (!document.getElementById('floatParticleBGStyle')) {
+        const style = document.createElement('style');
+        style.id = 'floatParticleBGStyle';
+        style.textContent = `
+            @keyframes floatParticleBG {
+                0% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 1;
+                }
+                90% {
+                    opacity: 1;
+                }
+                100% {
+                    transform: translate(${-300 + Math.random() * 600}px, ${-300 + Math.random() * 600}px) scale(0);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Create scanning line effect
+function createScanningLine(container) {
+    const scanLine = document.createElement('div');
+    scanLine.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(90deg, 
+            transparent, 
+            rgba(0, 255, 255, 0.8), 
+            rgba(255, 255, 255, 1), 
+            rgba(0, 255, 255, 0.8), 
+            transparent);
+        box-shadow: 0 0 20px rgba(0, 255, 255, 1);
+        animation: scanLineMove 4s linear infinite;
+        z-index: 100;
+        pointer-events: none;
+    `;
+    container.appendChild(scanLine);
+    
+    // Add CSS animation
+    if (!document.getElementById('scanLineMoveStyle')) {
+        const style = document.createElement('style');
+        style.id = 'scanLineMoveStyle';
+        style.textContent = `
+            @keyframes scanLineMove {
+                0% {
+                    top: 0;
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.8;
+                }
+                100% {
+                    top: 100%;
+                    opacity: 1;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Advanced menu lighting effects
+function createAdvancedMenuLighting(container) {
+    // Create multiple light sources for dynamic lighting
+    const lightSources = [];
+    
+    for (let i = 0; i < 6; i++) {
+        const light = document.createElement('div');
+        light.style.cssText = `
+            position: absolute;
+            width: ${200 + Math.random() * 300}px;
+            height: ${200 + Math.random() * 300}px;
+            border-radius: 50%;
+            background: radial-gradient(circle, 
+                rgba(${Math.random() > 0.5 ? '0, 255, 255' : '255, 215, 0'}, ${0.3 + Math.random() * 0.3}) 0%,
+                transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+            filter: blur(${40 + Math.random() * 40}px);
+            animation: lightFloat${i} ${8 + Math.random() * 12}s ease-in-out infinite;
+        `;
+        
+        const angle = (i / 6) * Math.PI * 2;
+        const radius = 30 + Math.random() * 20;
+        light.style.left = `${50 + Math.cos(angle) * radius}%`;
+        light.style.top = `${50 + Math.sin(angle) * radius}%`;
+        
+        container.appendChild(light);
+        lightSources.push(light);
+        
+        // Add animation
+        if (!document.getElementById(`lightFloat${i}Style`)) {
+            const style = document.createElement('style');
+            style.id = `lightFloat${i}Style`;
+            style.textContent = `
+                @keyframes lightFloat${i} {
+                    0%, 100% {
+                        transform: translate(${Math.cos(angle) * 50}px, ${Math.sin(angle) * 50}px) scale(1);
+                        opacity: ${0.3 + Math.random() * 0.4};
+                    }
+                    50% {
+                        transform: translate(${-Math.cos(angle) * 50}px, ${-Math.sin(angle) * 50}px) scale(${1.2 + Math.random() * 0.3});
+                        opacity: ${0.5 + Math.random() * 0.3};
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+}
+
+// Holographic grid effect
+function createHolographicGrid(container) {
+    const grid = document.createElement('canvas');
+    grid.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.15;
+    `;
+    grid.width = window.innerWidth;
+    grid.height = window.innerHeight;
+    
+    const ctx = grid.getContext('2d');
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    
+    const gridSize = 50;
+    
+    function drawGrid() {
+        ctx.clearRect(0, 0, grid.width, grid.height);
+        
+        const time = Date.now() * 0.0005;
+        const offsetX = Math.sin(time) * 20;
+        const offsetY = Math.cos(time) * 20;
+        
+        // Vertical lines
+        for (let x = -gridSize; x < grid.width + gridSize; x += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x + offsetX, 0);
+            ctx.lineTo(x + offsetX, grid.height);
+            ctx.stroke();
+        }
+        
+        // Horizontal lines
+        for (let y = -gridSize; y < grid.height + gridSize; y += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(0, y + offsetY);
+            ctx.lineTo(grid.width, y + offsetY);
+            ctx.stroke();
+        }
+        
+        requestAnimationFrame(drawGrid);
+    }
+    
+    drawGrid();
+    container.appendChild(grid);
+}
+
+// Floating particles effect
+function createFloatingParticles(container) {
+    const particleCount = 30;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        const size = 2 + Math.random() * 4;
+        const duration = 10 + Math.random() * 20;
+        const delay = Math.random() * 5;
+        
+        particle.style.cssText = `
+            position: absolute;
+            width: ${size}px;
+            height: ${size}px;
+            background: radial-gradient(circle, 
+                rgba(${Math.random() > 0.5 ? '0, 255, 255' : '255, 215, 0'}, 0.8) 0%,
+                transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+            box-shadow: 0 0 ${size * 2}px rgba(${Math.random() > 0.5 ? '0, 255, 255' : '255, 215, 0'}, 0.6);
+            left: ${Math.random() * 100}%;
+            animation: floatParticle${i} ${duration}s linear infinite ${delay}s;
+        `;
+        
+        container.appendChild(particle);
+        
+        // Add animation
+        if (!document.getElementById(`floatParticle${i}Style`)) {
+            const style = document.createElement('style');
+            style.id = `floatParticle${i}Style`;
+            const startY = Math.random() * 100;
+            const endY = -20;
+            const startX = Math.random() * 100;
+            const endX = startX + (Math.random() - 0.5) * 30;
+            
+            style.textContent = `
+                @keyframes floatParticle${i} {
+                    0% {
+                        transform: translate(${startX}vw, ${startY}vh) scale(0);
+                        opacity: 0;
+                    }
+                    10% {
+                        opacity: 1;
+                    }
+                    90% {
+                        opacity: 1;
+                    }
+                    100% {
+                        transform: translate(${endX}vw, ${endY}vh) scale(1);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+}
+
+// Araç değişiminde özel efekt
+function createCarChangeEffect() {
+    if (!carSelectionScene) return;
+    
+    // Parçacık efekti için geçici ışık patlaması
+    const flashLight = new THREE.PointLight(0x00FFFF, 5, 10);
+    flashLight.position.set(0, 1, 0);
+    carSelectionScene.add(flashLight);
+    
+    // Işık patlaması animasyonu
+    let flashIntensity = 5;
+    const flashAnimation = () => {
+        flashIntensity -= 0.3;
+        if (flashIntensity > 0) {
+            flashLight.intensity = flashIntensity;
+            requestAnimationFrame(flashAnimation);
+        } else {
+            carSelectionScene.remove(flashLight);
+            flashLight.dispose();
+        }
+    };
+    flashAnimation();
+}
+
+// Mouse cursor trail efekti - lastik dumanı gibi duman efekti
+function createMouseTrailEffect(container) {
+    // Eğer zaten varsa tekrar oluşturma
+    if (document.getElementById('mouseTrailContainer')) {
+        return;
+    }
+    
+    // Duman parçacıkları için container
+    const trailContainer = document.createElement('div');
+    trailContainer.id = 'mouseTrailContainer';
+    trailContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9999;
+        overflow: hidden;
+    `;
+    document.body.appendChild(trailContainer);
+    
+    // Duman parçacıkları dizisi
+    const smokeParticles = [];
+    const maxParticles = 15; // Duman yoğunluğu
+    let mouseX = 0, mouseY = 0;
+    let lastMouseX = 0, lastMouseY = 0;
+    
+    // Duman parçacığı oluştur
+    function createSmokeParticle(x, y) {
+        const particle = document.createElement('div');
+        const size = 8 + Math.random() * 12; // Rastgele boyut
+        const duration = 800 + Math.random() * 400; // Duman süresi
+        
+        particle.style.cssText = `
+            position: absolute;
+            width: ${size}px;
+            height: ${size}px;
+            border-radius: 50%;
+            background: radial-gradient(circle, 
+                rgba(150, 150, 150, 0.6) 0%,
+                rgba(100, 100, 100, 0.4) 30%,
+                rgba(50, 50, 50, 0.2) 60%,
+                transparent 100%);
+            pointer-events: none;
+            left: ${x}px;
+            top: ${y}px;
+            transform: translate(-50%, -50%);
+            opacity: 0.8;
+            filter: blur(3px);
+        `;
+        
+        trailContainer.appendChild(particle);
+        
+        // Duman animasyonu - yukarı doğru yayılma
+        const startX = x + (Math.random() - 0.5) * 20;
+        const startY = y + (Math.random() - 0.5) * 20;
+        const endX = startX + (Math.random() - 0.5) * 60;
+        const endY = startY - 40 - Math.random() * 60;
+        const endSize = size * (1.5 + Math.random() * 1.5);
+        
+        let progress = 0;
+        const animate = () => {
+            progress += 0.02;
+            if (progress < 1) {
+                const currentX = startX + (endX - startX) * progress;
+                const currentY = startY + (endY - startY) * progress;
+                const currentSize = size + (endSize - size) * progress;
+                const currentOpacity = 0.8 * (1 - progress);
+                
+                particle.style.left = currentX + 'px';
+                particle.style.top = currentY + 'px';
+                particle.style.width = currentSize + 'px';
+                particle.style.height = currentSize + 'px';
+                particle.style.opacity = currentOpacity;
+                particle.style.filter = `blur(${3 + progress * 5}px)`;
+                
+                requestAnimationFrame(animate);
+            } else {
+                // Particle'ı sadece hala container'ın child'ı ise kaldır
+                if (particle && particle.parentNode === trailContainer) {
+                    trailContainer.removeChild(particle);
+                }
+                const index = smokeParticles.indexOf(particle);
+                if (index > -1) smokeParticles.splice(index, 1);
+            }
+        };
+        animate();
+        
+        smokeParticles.push(particle);
+    }
+    
+    // Mouse hareketini takip et ve duman oluştur
+    let lastParticleTime = 0;
+    const handleMouseMove = (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        
+        // Her 30ms'de bir yeni duman parçacığı oluştur (smooth duman)
+        const now = Date.now();
+        if (now - lastParticleTime > 30) {
+            createSmokeParticle(mouseX, mouseY);
+            lastParticleTime = now;
+        }
+        
+        // Hızlandığında daha fazla duman
+        const speed = Math.sqrt(
+            Math.pow(mouseX - lastMouseX, 2) + 
+            Math.pow(mouseY - lastMouseY, 2)
+        );
+        if (speed > 5 && now - lastParticleTime > 15) {
+            createSmokeParticle(mouseX, mouseY);
+            lastParticleTime = now;
+        }
+        
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+    };
+    
+    const handleMouseLeave = () => {
+        // Menü dışına çıkınca dumanı temizle
+        setTimeout(() => {
+            smokeParticles.forEach(particle => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            });
+            smokeParticles.length = 0;
+        }, 1000);
+    };
+    
+    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('mouseleave', handleMouseLeave);
+    
+    // Panellere hover efekti ekle
+    setTimeout(() => {
+        const panels = container.querySelectorAll('[id="carInfoPanel"], [id="performancePanel"]');
+        panels.forEach(panel => {
+            panel.addEventListener('mouseenter', () => {
+                panel.style.transform = 'scale(1.02)';
+                panel.style.transition = 'transform 0.3s ease';
+            });
+            panel.addEventListener('mouseleave', () => {
+                panel.style.transform = 'scale(1)';
+            });
+        });
+    }, 100);
+}
+
+// Energy waves effect
+function createEnergyWaves(container) {
+    const waveCount = 3;
+    
+    for (let i = 0; i < waveCount; i++) {
+        const wave = document.createElement('div');
+        wave.style.cssText = `
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(0, 255, 255, 0.5) 20%,
+                rgba(0, 255, 255, 0.8) 50%,
+                rgba(0, 255, 255, 0.5) 80%,
+                transparent 100%);
+            pointer-events: none;
+            z-index: 3;
+            filter: blur(1px);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+            animation: energyWave${i} ${4 + i * 2}s linear infinite ${i * 1.5}s;
+        `;
+        
+        container.appendChild(wave);
+        
+        // Add animation
+        if (!document.getElementById(`energyWave${i}Style`)) {
+            const style = document.createElement('style');
+            style.id = `energyWave${i}Style`;
+            style.textContent = `
+                @keyframes energyWave${i} {
+                    0% {
+                        top: ${20 + i * 25}%;
+                        opacity: 0;
+                        transform: scaleX(0);
+                    }
+                    10% {
+                        opacity: 1;
+                    }
+                    50% {
+                        transform: scaleX(1);
+                    }
+                    90% {
+                        opacity: 1;
+                    }
+                    100% {
+                        top: ${80 - i * 25}%;
+                        opacity: 0;
+                        transform: scaleX(0);
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+}
 
 function createCarSelectionMenu() {
     
@@ -2543,35 +4427,354 @@ function createCarSelectionMenu() {
     menuContainer.style.left = '0';
     menuContainer.style.width = '100%';
     menuContainer.style.height = '100%';
-    menuContainer.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+    menuContainer.style.background = `
+        radial-gradient(ellipse at top, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at bottom, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 30%, #16213e 60%, #0f3460 100%)
+    `;
     menuContainer.style.display = 'flex';
     menuContainer.style.flexDirection = 'column';
     menuContainer.style.alignItems = 'center';
     menuContainer.style.justifyContent = 'center';
     menuContainer.style.zIndex = '2000';
-    menuContainer.style.fontFamily = 'Arial, sans-serif';
-
+    menuContainer.style.fontFamily = '"Segoe UI", "Arial", sans-serif';
+    menuContainer.style.overflow = 'hidden';
+    menuContainer.style.position = 'relative';
+    
+    // Add animated background particles
+    createAnimatedBackground(menuContainer);
+    
+    // Add scanning line effect
+    createScanningLine(menuContainer);
+    
+    // Add advanced lighting effects
+    createAdvancedMenuLighting(menuContainer);
+    
+    // Add holographic grid effect
+    createHolographicGrid(menuContainer);
+    
+    // Add floating particles
+    createFloatingParticles(menuContainer);
+    
+    // Add energy waves
+    createEnergyWaves(menuContainer);
+    
+    // Add advanced lighting effects
+    createAdvancedMenuLighting(menuContainer);
+    
+    // Add holographic grid effect
+    createHolographicGrid(menuContainer);
+    
+    // Add floating particles
+    createFloatingParticles(menuContainer);
+    
+    // Add energy waves
+    createEnergyWaves(menuContainer);
+    
+    // Modern title with enhanced glow effect and animated car icons
+    const titleContainer = document.createElement('div');
+    titleContainer.style.cssText = `
+        position: relative;
+        margin-bottom: 30px;
+        text-align: center;
+        z-index: 1;
+    `;
+    
+    // Sol araba ikonu - 3D minyatür model
+    const leftCarIcon = document.createElement('div');
+    leftCarIcon.id = 'leftTitleCarIcon';
+    leftCarIcon.style.cssText = `
+        display: inline-block;
+        width: 80px;
+        height: 80px;
+        margin-right: 20px;
+        animation: carIconFloat 3s ease-in-out infinite, carIconPulse 2s ease-in-out infinite;
+        cursor: pointer;
+        transition: transform 0.3s ease, filter 0.3s ease;
+        filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.6));
+        position: relative;
+        vertical-align: middle;
+    `;
+    
+    // Sağ araba ikonu - 3D minyatür model
+    const rightCarIcon = document.createElement('div');
+    rightCarIcon.id = 'rightTitleCarIcon';
+    rightCarIcon.style.cssText = `
+        display: inline-block;
+        width: 80px;
+        height: 80px;
+        margin-left: 20px;
+        animation: carIconFloat 3s ease-in-out infinite 1.5s, carIconPulse 2s ease-in-out infinite 1s;
+        cursor: pointer;
+        transition: transform 0.3s ease, filter 0.3s ease;
+        filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.6));
+        position: relative;
+        vertical-align: middle;
+    `;
+    
+    // Car icon hover efektleri
+    leftCarIcon.addEventListener('mouseenter', () => {
+        leftCarIcon.style.transform = 'scale(1.3) rotate(15deg)';
+        leftCarIcon.style.filter = 'drop-shadow(0 0 20px rgba(0, 255, 255, 1))';
+    });
+    leftCarIcon.addEventListener('mouseleave', () => {
+        leftCarIcon.style.transform = 'scale(1) rotate(0deg)';
+        leftCarIcon.style.filter = 'drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))';
+    });
+    
+    rightCarIcon.addEventListener('mouseenter', () => {
+        rightCarIcon.style.transform = 'scale(1.3) rotate(-15deg)';
+        rightCarIcon.style.filter = 'drop-shadow(0 0 20px rgba(0, 255, 255, 1))';
+    });
+    rightCarIcon.addEventListener('mouseleave', () => {
+        rightCarIcon.style.transform = 'scale(1) rotate(0deg)';
+        rightCarIcon.style.filter = 'drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))';
+    });
+    
+    // 3D minyatür araba modellerini yükle ve render et (modeller yüklendikten sonra)
+    // Placeholder'ı boş bırak
+    leftCarIcon.innerHTML = '';
+    rightCarIcon.innerHTML = '';
+    
+    // Modeller yüklendikten sonra 3D modelleri göster
+    const updateTitleIcons = async () => {
+        console.log('🎨 Başlık ikonları güncelleniyor...');
+        
+        // Önce modellerin yüklenip yüklenmediğini kontrol et
+        if (!loadedCarModels || loadedCarModels.length === 0) {
+            // Modeller yüklenmemişse yükle
+            console.log('📦 Başlık ikonları için modeller yükleniyor...');
+            try {
+                await loadCarModelsForSelection();
+                console.log('✅ Modeller yüklendi, ikonlar oluşturuluyor...');
+            } catch (error) {
+                console.error('❌ Modeller yüklenirken hata:', error);
+                return; // Hata durumunda çık
+            }
+        }
+        
+        // Modeller yüklenene kadar bekle (maksimum 15 saniye)
+        let attempts = 0;
+        while ((!loadedCarModels || loadedCarModels.length === 0 || !loadedCarModels[0] || !loadedCarModels[AVAILABLE_CARS.length - 1]) && attempts < 150) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        // 3D modelleri oluştur
+        if (loadedCarModels && loadedCarModels.length > 0 && loadedCarModels[0] && loadedCarModels[AVAILABLE_CARS.length - 1]) {
+            console.log('🎨 3D minyatür ikonlar oluşturuluyor...');
+            console.log('📊 Sol ikon için model:', loadedCarModels[0] ? 'Yüklü' : 'Yok');
+            console.log('📊 Sağ ikon için model:', loadedCarModels[AVAILABLE_CARS.length - 1] ? 'Yüklü' : 'Yok');
+            
+            // Placeholder'ı temizle
+            leftCarIcon.innerHTML = '';
+            rightCarIcon.innerHTML = '';
+            
+            // 3D modelleri oluştur
+            try {
+                createMiniature3DCarIcon(leftCarIcon, 0); // İlk araba
+                createMiniature3DCarIcon(rightCarIcon, AVAILABLE_CARS.length - 1); // Son araba
+                console.log('✅ 3D ikonlar oluşturuldu');
+            } catch (error) {
+                console.error('❌ 3D ikon oluşturulurken hata:', error);
+                // Fallback: emoji göster
+                leftCarIcon.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+                rightCarIcon.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+            }
+        } else {
+            console.warn('⚠️ Modeller yüklenemedi, emoji ikonlar kullanılıyor');
+            console.warn('📊 loadedCarModels durumu:', {
+                length: loadedCarModels ? loadedCarModels.length : 0,
+                first: loadedCarModels && loadedCarModels[0] ? 'Yüklü' : 'Yok',
+                last: loadedCarModels && loadedCarModels[AVAILABLE_CARS.length - 1] ? 'Yüklü' : 'Yok'
+            });
+        }
+    };
+    
+    // Hemen başlat ve modeller yüklendikten sonra tekrar dene
+    updateTitleIcons();
+    
+    // Modeller yüklendikten sonra tekrar güncelle (güvenlik için)
+    setTimeout(() => {
+        if (leftCarIcon.innerHTML.includes('🚗') || rightCarIcon.innerHTML.includes('🚗')) {
+            console.log('🔄 İkonlar hala emoji, tekrar güncelleniyor...');
+            updateTitleIcons();
+        }
+    }, 2000);
     
     const title = document.createElement('h1');
-    title.textContent = '🚗 ARAÇ SEÇİMİ 🚗';
-    title.style.color = '#FFFFFF';
-    title.style.marginBottom = '20px';
-    title.style.fontSize = '48px';
-    title.style.textShadow = '3px 3px 6px rgba(0,0,0,0.8)';
-    title.style.textAlign = 'center';
-    menuContainer.appendChild(title);
+    title.style.cssText = `
+        color: #FFFFFF;
+        font-size: 72px;
+        font-weight: 900;
+        text-shadow: 
+            0 0 10px rgba(0, 255, 255, 0.8),
+            0 0 20px rgba(0, 255, 255, 0.6),
+            0 0 30px rgba(0, 255, 255, 0.4),
+            0 0 40px rgba(0, 255, 255, 0.2),
+            0 0 60px rgba(0, 255, 255, 0.1);
+        margin: 0;
+        letter-spacing: 5px;
+        animation: titleGlowEnhanced 2s ease-in-out infinite alternate;
+        position: relative;
+        display: inline-block;
+    `;
+    title.textContent = 'ARAÇ SEÇİMİ';
+    
+    // Add CSS animation for enhanced title glow
+    if (!document.getElementById('titleGlowEnhancedStyle')) {
+        const style = document.createElement('style');
+        style.id = 'titleGlowEnhancedStyle';
+        style.textContent = `
+            @keyframes titleGlowEnhanced {
+                0% {
+                    text-shadow: 
+                        0 0 10px rgba(0, 255, 255, 0.8),
+                        0 0 20px rgba(0, 255, 255, 0.6),
+                        0 0 30px rgba(0, 255, 255, 0.4);
+                    transform: scale(1);
+                }
+                100% {
+                    text-shadow: 
+                        0 0 20px rgba(0, 255, 255, 1),
+                        0 0 40px rgba(0, 255, 255, 0.8),
+                        0 0 60px rgba(0, 255, 255, 0.6),
+                        0 0 80px rgba(0, 255, 255, 0.4),
+                        0 0 100px rgba(0, 255, 255, 0.2);
+                    transform: scale(1.02);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    titleContainer.appendChild(leftCarIcon);
+    titleContainer.appendChild(title);
+    titleContainer.appendChild(rightCarIcon);
+    menuContainer.appendChild(titleContainer);
+    
+    // Car icon float animation - gelişmiş animasyon
+    if (!document.getElementById('carIconFloatStyle')) {
+        const style = document.createElement('style');
+        style.id = 'carIconFloatStyle';
+        style.textContent = `
+            @keyframes carIconFloat {
+                0%, 100% {
+                    transform: translateY(0px) rotate(0deg) scale(1);
+                    filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.6));
+                }
+                25% {
+                    transform: translateY(-20px) rotate(15deg) scale(1.1);
+                    filter: drop-shadow(0 0 25px rgba(0, 255, 255, 1));
+                }
+                50% {
+                    transform: translateY(-15px) rotate(0deg) scale(1.15);
+                    filter: drop-shadow(0 0 30px rgba(0, 255, 255, 1));
+                }
+                75% {
+                    transform: translateY(-25px) rotate(-15deg) scale(1.1);
+                    filter: drop-shadow(0 0 25px rgba(0, 255, 255, 1));
+                }
+            }
+            @keyframes carIconPulse {
+                0%, 100% {
+                    transform: scale(1);
+                    filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.6));
+                }
+                50% {
+                    transform: scale(1.15);
+                    filter: drop-shadow(0 0 25px rgba(0, 255, 255, 1));
+                }
+            }
+            @keyframes flagWave {
+                0%, 100% {
+                    transform: rotate(0deg);
+                }
+                10% {
+                    transform: rotate(-8deg);
+                }
+                20% {
+                    transform: rotate(8deg);
+                }
+                30% {
+                    transform: rotate(-6deg);
+                }
+                40% {
+                    transform: rotate(6deg);
+                }
+                50% {
+                    transform: rotate(-4deg);
+                }
+                60% {
+                    transform: rotate(4deg);
+                }
+                70% {
+                    transform: rotate(-2deg);
+                }
+                80% {
+                    transform: rotate(2deg);
+                }
+                90% {
+                    transform: rotate(0deg);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    
+    // Mouse cursor trail efekti ekle
+    createMouseTrailEffect(menuContainer);
 
     
     const sceneContainer = document.createElement('div');
     sceneContainer.style.position = 'relative';
-    sceneContainer.style.width = '800px'; 
-    sceneContainer.style.height = '600px'; 
-    sceneContainer.style.border = '3px solid #FFD700';
-    sceneContainer.style.borderRadius = '15px';
-    sceneContainer.style.background = 'linear-gradient(45deg, #2c3e50, #3498db)';
-    sceneContainer.style.boxShadow = '0 0 30px rgba(255, 215, 0, 0.5)';
+    sceneContainer.style.width = '900px'; 
+    sceneContainer.style.height = '650px'; 
+    sceneContainer.style.border = '4px solid transparent';
+    sceneContainer.style.borderRadius = '20px';
+    sceneContainer.style.background = 'linear-gradient(45deg, #1a1a2e, #16213e, #0f3460)';
+    sceneContainer.style.boxShadow = `
+        0 0 40px rgba(0, 255, 255, 0.6),
+        0 0 80px rgba(0, 255, 255, 0.3),
+        inset 0 0 40px rgba(0, 255, 255, 0.1)
+    `;
     sceneContainer.style.marginBottom = '30px';
     sceneContainer.style.overflow = 'hidden';
+    sceneContainer.style.position = 'relative';
+    
+    // Add animated border
+    sceneContainer.style.backgroundImage = `
+        linear-gradient(45deg, #1a1a2e, #16213e, #0f3460),
+        linear-gradient(45deg, rgba(0, 255, 255, 0.3), rgba(255, 215, 0, 0.3))
+    `;
+    sceneContainer.style.backgroundClip = 'padding-box, border-box';
+    sceneContainer.style.backgroundOrigin = 'padding-box, border-box';
+    
+    // Add pulsing border animation
+    sceneContainer.style.animation = 'borderPulse 3s ease-in-out infinite';
+    
+    if (!document.getElementById('borderPulseStyle')) {
+        const style = document.createElement('style');
+        style.id = 'borderPulseStyle';
+        style.textContent = `
+            @keyframes borderPulse {
+                0%, 100% {
+                    box-shadow: 
+                        0 0 40px rgba(0, 255, 255, 0.6),
+                        0 0 80px rgba(0, 255, 255, 0.3),
+                        inset 0 0 40px rgba(0, 255, 255, 0.1);
+                }
+                50% {
+                    box-shadow: 
+                        0 0 60px rgba(0, 255, 255, 0.9),
+                        0 0 120px rgba(0, 255, 255, 0.5),
+                        inset 0 0 60px rgba(0, 255, 255, 0.2);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     
     carSelectionCanvas = document.createElement('canvas');
@@ -2583,18 +4786,97 @@ function createCarSelectionMenu() {
     
     const carInfoPanel = document.createElement('div');
     carInfoPanel.id = 'carInfoPanel';
-    carInfoPanel.style.position = 'absolute';
-    carInfoPanel.style.top = '5px'; 
-    carInfoPanel.style.left = '5px'; 
-    carInfoPanel.style.background = 'rgba(0, 0, 0, 0.8)';
-    carInfoPanel.style.color = '#FFFFFF';
-    carInfoPanel.style.padding = '8px'; 
-    carInfoPanel.style.borderRadius = '6px'; 
-    carInfoPanel.style.fontSize = '12px'; 
-    carInfoPanel.style.minWidth = '150px'; 
-    carInfoPanel.style.border = '1px solid #FFD700'; 
-    carInfoPanel.style.maxWidth = '200px'; 
+    carInfoPanel.style.cssText = `
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 26, 46, 0.95));
+        backdrop-filter: blur(15px);
+        color: #FFFFFF;
+        padding: 25px;
+        border-radius: 15px;
+        font-size: 16px;
+        min-width: 280px;
+        border: 2px solid rgba(0, 255, 255, 0.6);
+        box-shadow: 
+            0 0 30px rgba(0, 255, 255, 0.5),
+            inset 0 0 30px rgba(0, 255, 255, 0.1);
+        z-index: 10;
+        animation: panelGlow 3s ease-in-out infinite;
+    `;
+    
+    // Add panel glow animation if not exists
+    if (!document.getElementById('panelGlowStyle')) {
+        const style = document.createElement('style');
+        style.id = 'panelGlowStyle';
+        style.textContent = `
+            @keyframes panelGlow {
+                0%, 100% {
+                    box-shadow: 
+                        0 0 30px rgba(0, 255, 255, 0.5),
+                        inset 0 0 30px rgba(0, 255, 255, 0.1);
+                    border-color: rgba(0, 255, 255, 0.6);
+                }
+                50% {
+                    box-shadow: 
+                        0 0 50px rgba(0, 255, 255, 0.8),
+                        inset 0 0 50px rgba(0, 255, 255, 0.2);
+                    border-color: rgba(0, 255, 255, 1);
+                }
+            }
+            @keyframes titlePulse {
+                0%, 100% {
+                    transform: scale(1);
+                    text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+                }
+                50% {
+                    transform: scale(1.02);
+                    text-shadow: 0 0 30px rgba(255, 215, 0, 1), 0 0 40px rgba(255, 215, 0, 0.6);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
     sceneContainer.appendChild(carInfoPanel);
+    
+    // Sağ tarafta performans karşılaştırma paneli ekle
+    const performancePanel = document.createElement('div');
+    performancePanel.id = 'performancePanel';
+    performancePanel.style.cssText = `
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 26, 46, 0.95));
+        backdrop-filter: blur(15px);
+        color: #FFFFFF;
+        padding: 25px;
+        border-radius: 15px;
+        font-size: 14px;
+        min-width: 250px;
+        border: 2px solid rgba(255, 215, 0, 0.6);
+        box-shadow: 
+            0 0 30px rgba(255, 215, 0, 0.5),
+            inset 0 0 30px rgba(255, 215, 0, 0.1);
+        z-index: 10;
+        animation: panelGlow 3s ease-in-out infinite;
+    `;
+    performancePanel.innerHTML = `
+        <div style="color: #FFD700; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);">
+            📊 KARŞILAŞTIRMA
+        </div>
+        <div style="color: #CCCCCC; font-size: 12px; line-height: 1.8;">
+            <div style="margin-bottom: 10px;">💡 Araçları karşılaştırın</div>
+            <div style="margin-bottom: 10px;">⚡ Performans metrikleri</div>
+            <div style="margin-bottom: 10px;">🎯 Her araç benzersiz</div>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 215, 0, 0.3);">
+                <div style="color: #00FFFF; font-size: 11px;">
+                    💡 İpucu: Araçlar otomatik döner
+                </div>
+            </div>
+        </div>
+    `;
+    sceneContainer.appendChild(performancePanel);
 
     menuContainer.appendChild(sceneContainer);
 
@@ -2604,47 +4886,159 @@ function createCarSelectionMenu() {
     controlsContainer.style.gap = '20px';
     controlsContainer.style.alignItems = 'center';
     controlsContainer.style.marginBottom = '30px';
+    controlsContainer.style.zIndex = 1;
 
     
     const prevButton = document.createElement('button');
     prevButton.innerHTML = '⬅️ ÖNCEKİ';
-    prevButton.style.background = 'linear-gradient(45deg, #e74c3c, #c0392b)';
-    prevButton.style.border = 'none';
-    prevButton.style.borderRadius = '15px';
-    prevButton.style.padding = '15px 25px';
-    prevButton.style.fontSize = '18px';
-    prevButton.style.color = '#FFFFFF';
-    prevButton.style.cursor = 'pointer';
-    prevButton.style.fontWeight = 'bold';
-    prevButton.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
-    prevButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
-    prevButton.style.transition = 'all 0.3s ease';
+    prevButton.style.cssText = `
+        background: linear-gradient(135deg, #e74c3c, #c0392b);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 25px;
+        padding: 20px 40px;
+        font-size: 22px;
+        color: #FFFFFF;
+        cursor: pointer;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        box-shadow: 
+            0 8px 25px rgba(231, 76, 60, 0.6),
+            0 0 40px rgba(231, 76, 60, 0.3);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    `;
+    
+    // Hover efektleri
+    prevButton.addEventListener('mouseenter', () => {
+        prevButton.style.transform = 'scale(1.1) translateY(-3px)';
+        prevButton.style.boxShadow = '0 12px 35px rgba(231, 76, 60, 0.9), 0 0 60px rgba(231, 76, 60, 0.5)';
+        prevButton.style.borderColor = 'rgba(255, 255, 255, 0.8)';
+    });
+    prevButton.addEventListener('mouseleave', () => {
+        prevButton.style.transform = 'scale(1) translateY(0px)';
+        prevButton.style.boxShadow = '0 8px 25px rgba(231, 76, 60, 0.6), 0 0 40px rgba(231, 76, 60, 0.3)';
+        prevButton.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+    });
+    
+    // Add shine effect
+    const prevShine = document.createElement('div');
+    prevShine.style.cssText = `
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(45deg, transparent, rgba(255,255,255,0.3), transparent);
+        animation: buttonShine 3s infinite;
+    `;
+    prevButton.appendChild(prevShine);
 
     
     const nextButton = document.createElement('button');
     nextButton.innerHTML = 'SONRAKİ ➡️';
-    nextButton.style.background = 'linear-gradient(45deg, #3498db, #2980b9)';
-    nextButton.style.border = 'none';
-    nextButton.style.borderRadius = '15px';
-    nextButton.style.padding = '15px 25px';
-    nextButton.style.fontSize = '18px';
-    nextButton.style.color = '#FFFFFF';
-    nextButton.style.cursor = 'pointer';
-    nextButton.style.fontWeight = 'bold';
-    nextButton.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
-    nextButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
-    nextButton.style.transition = 'all 0.3s ease';
+    nextButton.style.cssText = `
+        background: linear-gradient(135deg, #3498db, #2980b9);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 25px;
+        padding: 20px 40px;
+        font-size: 22px;
+        color: #FFFFFF;
+        cursor: pointer;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        box-shadow: 
+            0 8px 25px rgba(52, 152, 219, 0.6),
+            0 0 40px rgba(52, 152, 219, 0.3);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    `;
+    
+    // Hover efektleri
+    nextButton.addEventListener('mouseenter', () => {
+        nextButton.style.transform = 'scale(1.1) translateY(-3px)';
+        nextButton.style.boxShadow = '0 12px 35px rgba(52, 152, 219, 0.9), 0 0 60px rgba(52, 152, 219, 0.5)';
+        nextButton.style.borderColor = 'rgba(255, 255, 255, 0.8)';
+    });
+    nextButton.addEventListener('mouseleave', () => {
+        nextButton.style.transform = 'scale(1) translateY(0px)';
+        nextButton.style.boxShadow = '0 8px 25px rgba(52, 152, 219, 0.6), 0 0 40px rgba(52, 152, 219, 0.3)';
+        nextButton.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+    });
+    
+    const nextShine = document.createElement('div');
+    nextShine.style.cssText = `
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(45deg, transparent, rgba(255,255,255,0.3), transparent);
+        animation: buttonShine 3s infinite 1.5s;
+    `;
+    nextButton.appendChild(nextShine);
+    
+    // Add button shine animation if not exists
+    if (!document.getElementById('buttonShineStyle')) {
+        const style = document.createElement('style');
+        style.id = 'buttonShineStyle';
+        style.textContent = `
+            @keyframes buttonShine {
+                0% {
+                    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+                }
+                100% {
+                    transform: translateX(100%) translateY(100%) rotate(45deg);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     
     const carIndexDisplay = document.createElement('div');
     carIndexDisplay.id = 'carIndexDisplay';
-    carIndexDisplay.style.background = 'rgba(255, 255, 255, 0.2)';
-    carIndexDisplay.style.color = '#FFFFFF';
-    carIndexDisplay.style.padding = '10px 20px';
-    carIndexDisplay.style.borderRadius = '20px';
-    carIndexDisplay.style.fontSize = '16px';
-    carIndexDisplay.style.fontWeight = 'bold';
-    carIndexDisplay.style.border = '2px solid #FFD700';
+    carIndexDisplay.style.cssText = `
+        background: linear-gradient(135deg, rgba(255, 215, 0, 0.4), rgba(255, 165, 0, 0.4));
+        backdrop-filter: blur(10px);
+        color: #FFFFFF;
+        padding: 18px 35px;
+        border-radius: 30px;
+        font-size: 24px;
+        font-weight: bold;
+        border: 3px solid rgba(255, 215, 0, 0.9);
+        box-shadow: 
+            0 0 30px rgba(255, 215, 0, 0.6),
+            inset 0 0 30px rgba(255, 215, 0, 0.2);
+        text-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+        min-width: 180px;
+        text-align: center;
+        animation: indexPulse 2s ease-in-out infinite;
+    `;
+    
+    // Add index pulse animation if not exists
+    if (!document.getElementById('indexPulseStyle')) {
+        const style = document.createElement('style');
+        style.id = 'indexPulseStyle';
+        style.textContent = `
+            @keyframes indexPulse {
+                0%, 100% {
+                    transform: scale(1);
+                    box-shadow: 
+                        0 0 30px rgba(255, 215, 0, 0.6),
+                        inset 0 0 30px rgba(255, 215, 0, 0.2);
+                }
+                50% {
+                    transform: scale(1.05);
+                    box-shadow: 
+                        0 0 50px rgba(255, 215, 0, 0.9),
+                        inset 0 0 50px rgba(255, 215, 0, 0.3);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     controlsContainer.appendChild(prevButton);
     controlsContainer.appendChild(carIndexDisplay);
@@ -2665,8 +5059,30 @@ function createCarSelectionMenu() {
     startButton.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
     startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     startButton.style.transition = 'all 0.3s ease';
+    startButton.style.position = 'relative';
+    startButton.style.overflow = 'hidden';
+    
+    // Start button hover efektleri - bayrak sallanma animasyonu ile
+    startButton.addEventListener('mouseenter', () => {
+        startButton.style.transform = 'scale(1.15) translateY(-5px)';
+        startButton.style.boxShadow = '0 10px 30px rgba(39, 174, 96, 0.8), 0 0 50px rgba(39, 174, 96, 0.5)';
+        startButton.style.background = 'linear-gradient(45deg, #2ecc71, #27ae60)';
+        // Bayrak ikonuna sallanma animasyonu ekle
+        startButton.style.animation = 'flagWave 0.6s ease-in-out infinite';
+    });
+    startButton.addEventListener('mouseleave', () => {
+        startButton.style.transform = 'scale(1) translateY(0px)';
+        startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
+        startButton.style.background = 'linear-gradient(45deg, #27ae60, #2ecc71)';
+        startButton.style.animation = '';
+    });
 
     menuContainer.appendChild(startButton);
+    
+    // Mouse cursor trail efekti ekle (sadece ilk createCarSelectionMenu'da)
+    if (!document.getElementById('mouseTrail')) {
+        createMouseTrailEffect(menuContainer);
+    }
 
     
     const instructions = document.createElement('div');
@@ -2765,16 +5181,32 @@ function createCarSelectionMenu() {
     startButton.addEventListener('click', startGameWithSelectedCar);
 
     
-    [prevButton, nextButton, startButton].forEach(button => {
+    [prevButton, nextButton].forEach(button => {
         button.addEventListener('mouseenter', () => {
-            button.style.transform = 'scale(1.1)';
-            button.style.boxShadow = '0 8px 25px rgba(0,0,0,0.5)';
+            button.style.transform = 'scale(1.2) translateY(-8px)';
+            button.style.filter = 'brightness(1.3)';
+            button.style.boxShadow = '0 12px 35px rgba(0,0,0,0.6)';
         });
         
         button.addEventListener('mouseleave', () => {
-            button.style.transform = 'scale(1)';
-            button.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+            button.style.transform = 'scale(1) translateY(0)';
+            button.style.filter = 'brightness(1)';
         });
+    });
+    
+    startButton.addEventListener('mouseenter', () => {
+        startButton.style.transform = 'scale(1.1) translateY(-8px)';
+        startButton.style.filter = 'brightness(1.2)';
+        startButton.style.animation = 'none';
+        setTimeout(() => {
+            startButton.style.animation = 'startButtonPulse 1s ease-in-out infinite, gradientShift 2s ease infinite, flagWave 0.6s ease-in-out infinite';
+        }, 10);
+    });
+    
+    startButton.addEventListener('mouseleave', () => {
+        startButton.style.transform = 'scale(1) translateY(0)';
+        startButton.style.filter = 'brightness(1)';
+        startButton.style.animation = 'startButtonPulse 2s ease-in-out infinite, gradientShift 3s ease infinite';
     });
 
     
@@ -3204,18 +5636,52 @@ function toggleLightControlPanel() {
 
 async function startGameWithSelectedCar() {
     
+    // Hide and remove car selection menu completely
     const menuContainer = document.getElementById('carSelectionMenu');
     if (menuContainer) {
-        
         if (menuContainer.cleanupHandler) {
             menuContainer.cleanupHandler();
         }
         menuContainer.style.display = 'none';
+        menuContainer.remove(); // Completely remove from DOM
     }
     
+    // Hide and remove light control panel
+    const lightControlPanel = document.getElementById('lightControlPanel');
+    if (lightControlPanel) {
+        lightControlPanel.style.display = 'none';
+        lightControlPanel.remove();
+    }
+    
+    // Hide and remove light intensity panel
+    const lightIntensityPanel = document.getElementById('lightIntensityPanel');
+    if (lightIntensityPanel) {
+        lightIntensityPanel.style.display = 'none';
+        lightIntensityPanel.remove();
+    }
+    
+    // Hide day/night selection menu if exists
+    const dayNightMenu = document.getElementById('dayNightSelectionMenu');
+    if (dayNightMenu) {
+        dayNightMenu.style.display = 'none';
+        dayNightMenu.remove();
+    }
     
     cleanup3DCarSelectionScene();
     
+    // Ensure canvas is visible and on top
+    const canvas = document.getElementById('gameCanvas');
+    if (canvas) {
+        canvas.style.display = 'block';
+        canvas.style.zIndex = '1';
+        canvas.style.position = 'relative';
+    }
+    
+    // Remove any remaining UI overlays that might block the game
+    const modernUI = document.getElementById('modernGameUI');
+    if (modernUI) {
+        modernUI.style.zIndex = '100';
+    }
     
     gameStarted = true;
     await startGame();
@@ -3352,6 +5818,44 @@ function createCarSelectionMenu() {
     carInfoPanel.style.border = '1px solid #FFD700'; 
     carInfoPanel.style.maxWidth = '200px'; 
     sceneContainer.appendChild(carInfoPanel);
+    
+    // Sağ tarafta performans karşılaştırma paneli ekle
+    const performancePanel = document.createElement('div');
+    performancePanel.id = 'performancePanel';
+    performancePanel.style.cssText = `
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 26, 46, 0.95));
+        backdrop-filter: blur(15px);
+        color: #FFFFFF;
+        padding: 25px;
+        border-radius: 15px;
+        font-size: 14px;
+        min-width: 250px;
+        border: 2px solid rgba(255, 215, 0, 0.6);
+        box-shadow: 
+            0 0 30px rgba(255, 215, 0, 0.5),
+            inset 0 0 30px rgba(255, 215, 0, 0.1);
+        z-index: 10;
+        animation: panelGlow 3s ease-in-out infinite;
+    `;
+    performancePanel.innerHTML = `
+        <div style="color: #FFD700; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);">
+            📊 KARŞILAŞTIRMA
+        </div>
+        <div style="color: #CCCCCC; font-size: 12px; line-height: 1.8;">
+            <div style="margin-bottom: 10px;">💡 Araçları karşılaştırın</div>
+            <div style="margin-bottom: 10px;">⚡ Performans metrikleri</div>
+            <div style="margin-bottom: 10px;">🎯 Her araç benzersiz</div>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 215, 0, 0.3);">
+                <div style="color: #00FFFF; font-size: 11px;">
+                    💡 İpucu: Araçlar otomatik döner
+                </div>
+            </div>
+        </div>
+    `;
+    sceneContainer.appendChild(performancePanel);
 
     menuContainer.appendChild(sceneContainer);
 
@@ -3422,8 +5926,30 @@ function createCarSelectionMenu() {
     startButton.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
     startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     startButton.style.transition = 'all 0.3s ease';
+    startButton.style.position = 'relative';
+    startButton.style.overflow = 'hidden';
+    
+    // Start button hover efektleri - bayrak sallanma animasyonu ile
+    startButton.addEventListener('mouseenter', () => {
+        startButton.style.transform = 'scale(1.15) translateY(-5px)';
+        startButton.style.boxShadow = '0 10px 30px rgba(39, 174, 96, 0.8), 0 0 50px rgba(39, 174, 96, 0.5)';
+        startButton.style.background = 'linear-gradient(45deg, #2ecc71, #27ae60)';
+        // Bayrak ikonuna sallanma animasyonu ekle
+        startButton.style.animation = 'flagWave 0.6s ease-in-out infinite';
+    });
+    startButton.addEventListener('mouseleave', () => {
+        startButton.style.transform = 'scale(1) translateY(0px)';
+        startButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
+        startButton.style.background = 'linear-gradient(45deg, #27ae60, #2ecc71)';
+        startButton.style.animation = '';
+    });
 
     menuContainer.appendChild(startButton);
+    
+    // Mouse cursor trail efekti ekle (sadece ilk createCarSelectionMenu'da)
+    if (!document.getElementById('mouseTrail')) {
+        createMouseTrailEffect(menuContainer);
+    }
 
     
     const instructions = document.createElement('div');
@@ -3522,16 +6048,32 @@ function createCarSelectionMenu() {
     startButton.addEventListener('click', startGameWithSelectedCar);
 
     
-    [prevButton, nextButton, startButton].forEach(button => {
+    [prevButton, nextButton].forEach(button => {
         button.addEventListener('mouseenter', () => {
-            button.style.transform = 'scale(1.1)';
-            button.style.boxShadow = '0 8px 25px rgba(0,0,0,0.5)';
+            button.style.transform = 'scale(1.2) translateY(-8px)';
+            button.style.filter = 'brightness(1.3)';
+            button.style.boxShadow = '0 12px 35px rgba(0,0,0,0.6)';
         });
         
         button.addEventListener('mouseleave', () => {
-            button.style.transform = 'scale(1)';
-            button.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+            button.style.transform = 'scale(1) translateY(0)';
+            button.style.filter = 'brightness(1)';
         });
+    });
+    
+    startButton.addEventListener('mouseenter', () => {
+        startButton.style.transform = 'scale(1.1) translateY(-8px)';
+        startButton.style.filter = 'brightness(1.2)';
+        startButton.style.animation = 'none';
+        setTimeout(() => {
+            startButton.style.animation = 'startButtonPulse 1s ease-in-out infinite, gradientShift 2s ease infinite, flagWave 0.6s ease-in-out infinite';
+        }, 10);
+    });
+    
+    startButton.addEventListener('mouseleave', () => {
+        startButton.style.transform = 'scale(1) translateY(0)';
+        startButton.style.filter = 'brightness(1)';
+        startButton.style.animation = 'startButtonPulse 2s ease-in-out infinite, gradientShift 3s ease infinite';
     });
 
     
@@ -3643,17 +6185,48 @@ async function init3DCarSelectionScene() {
     carSelectionScene.add(platform);
 
     
-    const ringGeometry = new THREE.TorusGeometry(3.2, 0.1, 8, 32);
-    const ringMaterial = new THREE.MeshBasicMaterial({ 
+    // Gelişmiş dönen halka - daha büyük ve parlak
+    const ringGeometry = new THREE.TorusGeometry(3.5, 0.15, 16, 64);
+    const ringMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xFFD700,
         transparent: true,
-        opacity: 0.7
+        opacity: 0.8,
+        emissive: 0xFFD700,
+        emissiveIntensity: 0.5
     });
     const ring = new THREE.Mesh(ringGeometry, ringMaterial);
     ring.position.y = -0.45;
     ring.rotation.x = Math.PI / 2;
     ring.name = 'rotatingRing';
     carSelectionScene.add(ring);
+    
+    // İç halka - daha küçük, ters yönde dönen
+    const innerRingGeometry = new THREE.TorusGeometry(2.8, 0.1, 12, 48);
+    const innerRingMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x00FFFF,
+        transparent: true,
+        opacity: 0.6,
+        emissive: 0x00FFFF,
+        emissiveIntensity: 0.3
+    });
+    const innerRing = new THREE.Mesh(innerRingGeometry, innerRingMaterial);
+    innerRing.position.y = -0.44;
+    innerRing.rotation.x = Math.PI / 2;
+    innerRing.name = 'innerRotatingRing';
+    carSelectionScene.add(innerRing);
+    
+    // Platform altı ışık efekti
+    const platformLight = new THREE.PointLight(0x00FFFF, 1.5, 8);
+    platformLight.position.set(0, -0.3, 0);
+    carSelectionScene.add(platformLight);
+    
+    // Platform üstü spot ışık
+    const topSpotLight = new THREE.SpotLight(0xFFFFFF, 2.5, 10, Math.PI / 4, 0.5);
+    topSpotLight.position.set(0, 5, 0);
+    topSpotLight.target.position.set(0, 0, 0);
+    topSpotLight.castShadow = true;
+    carSelectionScene.add(topSpotLight);
+    carSelectionScene.add(topSpotLight.target);
 
     
     createLightControlPanel();
@@ -3689,6 +6262,8 @@ function changeSelectedCar(direction) {
 
 function updateCarDisplay() {
     console.log('🔄 updateCarDisplay çalışıyor - Araç merkez pozisyonunda gözükecek');
+    console.log('📊 Yüklenmiş model sayısı:', loadedCarModels ? loadedCarModels.length : 0);
+    console.log('🎯 Seçili araç indexi:', selectedCarIndex);
     
     
     if (currentDisplayedCar) {
@@ -3697,9 +6272,13 @@ function updateCarDisplay() {
     }
     
     
-    if (loadedCarModels[selectedCarIndex]) {
+    if (loadedCarModels && loadedCarModels[selectedCarIndex] && loadedCarModels[selectedCarIndex] !== null) {
         currentDisplayedCar = loadedCarModels[selectedCarIndex].clone();
         currentDisplayedCar.position.set(0, 0.7, 0); 
+        currentDisplayedCar.rotation.set(0, 0, 0); // Başlangıç rotasyonu
+        
+        // Araç değişiminde özel efekt - scale animasyonu
+        currentDisplayedCar.scale.set(0, 0, 0); 
         
         
         
@@ -3708,25 +6287,68 @@ function updateCarDisplay() {
         console.log('📏 Araç boyutu:', size);
         
         
+        let targetScale = 1;
         if (size.y > 3 || size.x > 4 || size.z > 6) {
-            const scale = Math.min(3/size.y, 4/size.x, 6/size.z);
-            currentDisplayedCar.scale.multiplyScalar(scale);
-            console.log('📉 Araç ölçeklendi:', scale);
+            targetScale = Math.min(3/size.y, 4/size.x, 6/size.z);
+            console.log('📉 Araç ölçeklendi:', targetScale);
         }
         
-        console.log('✅ Yeni araba Y=0 merkezde eklendi:', currentDisplayedCar.position);
+        // Scale animasyonu - yumuşak giriş
+        let scaleProgress = 0;
+        const scaleAnimation = () => {
+            scaleProgress += 0.05;
+            if (scaleProgress < 1) {
+                const easeOut = 1 - Math.pow(1 - scaleProgress, 3); // Ease out cubic
+                currentDisplayedCar.scale.setScalar(easeOut * targetScale);
+                requestAnimationFrame(scaleAnimation);
+            } else {
+                currentDisplayedCar.scale.setScalar(targetScale);
+            }
+        };
+        scaleAnimation();
         
+        console.log('✅ Yeni araba Y=0.7 merkezde eklendi:', currentDisplayedCar.position);
         
+        // Gelişmiş gölge ve ışık ayarları
         currentDisplayedCar.traverse((child) => {
             if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
+                
+                // Material'ları daha parlak yap
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => {
+                            if (mat.emissive) {
+                                mat.emissiveIntensity = 0.1;
+                            }
+                        });
+                    } else {
+                        if (child.material.emissive) {
+                            child.material.emissiveIntensity = 0.1;
+                        }
+                    }
+                }
             }
         });
         
         carSelectionScene.add(currentDisplayedCar);
+        
+        // Araç değişiminde parçacık efekti (görsel feedback)
+        createCarChangeEffect();
     } else {
         console.warn('⚠️ Araç modeli yüklenmemiş:', selectedCarIndex);
+        console.warn('📦 Yüklenmiş modeller:', loadedCarModels ? loadedCarModels.map((m, i) => m ? i : null).filter(i => i !== null) : 'yok');
+        
+        // Model henüz yüklenmemişse, yüklenene kadar bekle ve tekrar dene
+        if (!loadedCarModels || loadedCarModels.length === 0 || !loadedCarModels[selectedCarIndex]) {
+            console.log('⏳ Model yükleniyor, bekleniyor...');
+            setTimeout(() => {
+                if (loadedCarModels && loadedCarModels[selectedCarIndex]) {
+                    updateCarDisplay();
+                }
+            }, 500);
+        }
     }
     
     
@@ -3735,18 +6357,90 @@ function updateCarDisplay() {
     
     if (carInfoPanel) {
         const car = AVAILABLE_CARS[selectedCarIndex];
+        
+        // Performans değerleri (araç tipine göre)
+        const isGangCar = [1, 3, 4, 5, 6, 8, 12].includes(selectedCarIndex);
+        const speedValue = isGangCar ? 85 + Math.floor(Math.random() * 15) : 60 + Math.floor(Math.random() * 20);
+        const powerValue = isGangCar ? 90 + Math.floor(Math.random() * 10) : 70 + Math.floor(Math.random() * 20);
+        const handlingValue = isGangCar ? 75 + Math.floor(Math.random() * 15) : 80 + Math.floor(Math.random() * 15);
+        const nitroValue = isGangCar ? 95 + Math.floor(Math.random() * 5) : 70 + Math.floor(Math.random() * 20);
+        
         carInfoPanel.innerHTML = `
-            <h3 style="margin: 0 0 10px 0; color: #FFD700;">${car.name}</h3>
-            <p style="margin: 0; color: #CCCCCC;">${car.description}</p>
-            <br>
-            <div style="color: #00FFFF;">
-                <strong>Özellikler:</strong><br>
-                • Ölçek: ${car.scale}<br>
-                • Model: ${car.path.split('/').pop()}<br>
-                • Y Pozisyon: 0 (Merkez)<br>
-                • Durum: ${loadedCarModels[selectedCarIndex] ? '✅ Hazır' : '❌ Yüklenmedi'}
+            <div style="position: relative;">
+                <h3 style="margin: 0 0 15px 0; color: #FFD700; font-size: 28px; text-shadow: 0 0 20px rgba(255, 215, 0, 0.8); animation: titlePulse 2s ease-in-out infinite;">
+                    ${car.name}
+                </h3>
+                <p style="margin: 0 0 20px 0; color: #00FFFF; font-size: 14px; line-height: 1.6;">${car.description}</p>
+                
+                <!-- Performans Göstergeleri -->
+                <div style="margin-top: 20px; border-top: 1px solid rgba(0, 255, 255, 0.3); padding-top: 15px;">
+                    <div style="color: #00FFFF; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);">
+                        ⚡ PERFORMANS METRİKLERİ
+                    </div>
+                    
+                    <!-- Hız -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #FFFFFF; font-size: 13px;">🚀 HIZ</span>
+                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${speedValue}%</span>
+                        </div>
+                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 255, 0.3);">
+                            <div class="statBar" data-value="${speedValue}" style="background: linear-gradient(90deg, #00FFFF, #00FF88); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(0, 255, 255, 0.6);"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Güç -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #FFFFFF; font-size: 13px;">💪 GÜÇ</span>
+                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${powerValue}%</span>
+                        </div>
+                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 68, 0, 0.3);">
+                            <div class="statBar" data-value="${powerValue}" style="background: linear-gradient(90deg, #FF4400, #FF8800); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(255, 68, 0, 0.6);"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Manevra -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #FFFFFF; font-size: 13px;">🎯 MANEVRA</span>
+                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${handlingValue}%</span>
+                        </div>
+                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 0, 0.3);">
+                            <div class="statBar" data-value="${handlingValue}" style="background: linear-gradient(90deg, #00FF00, #88FF00); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Nitro -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #FFFFFF; font-size: 13px;">⚡ NİTRO</span>
+                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${nitroValue}%</span>
+                        </div>
+                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 215, 0, 0.3);">
+                            <div class="statBar" data-value="${nitroValue}" style="background: linear-gradient(90deg, #FFD700, #FFA500); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(255, 215, 0, 0.6);"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Durum -->
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0, 255, 255, 0.3);">
+                    <div style="color: #00FF00; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 20px;">${loadedCarModels[selectedCarIndex] ? '✅' : '❌'}</span>
+                        <span><strong>Durum:</strong> ${loadedCarModels[selectedCarIndex] ? 'Hazır' : 'Yüklenmedi'}</span>
+                    </div>
+                </div>
             </div>
         `;
+        
+        // Stat bar animasyonlarını başlat
+        setTimeout(() => {
+            const statBars = carInfoPanel.querySelectorAll('.statBar');
+            statBars.forEach(bar => {
+                const value = parseInt(bar.getAttribute('data-value'));
+                bar.style.width = value + '%';
+            });
+        }, 100);
     }
     
     if (carIndexDisplay) {
@@ -3919,6 +6613,37 @@ function showMoonControlNotification() {
 
 
 window.addEventListener('load', async () => {
+    console.log('🚀 Oyun başlatılıyor...');
+    console.log('THREE:', typeof THREE !== 'undefined');
+    console.log('GLTFLoader:', typeof THREE !== 'undefined' && typeof THREE.GLTFLoader !== 'undefined');
+    
+    // THREE.js kontrolü
+    if (typeof THREE === 'undefined') {
+        console.error('❌ THREE.js yüklenemedi!');
+        document.body.innerHTML = `
+            <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                        background: rgba(255, 0, 0, 0.9); color: white; padding: 30px; 
+                        border-radius: 15px; text-align: center; z-index: 9999;">
+                <h2>❌ THREE.js Yüklenemedi</h2>
+                <p>Sayfayı yenileyin.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // GLTFLoader kontrolü
+    if (!loader) {
+        console.error('❌ GLTFLoader yüklenemedi!');
+        document.body.innerHTML = `
+            <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                        background: rgba(255, 0, 0, 0.9); color: white; padding: 30px; 
+                        border-radius: 15px; text-align: center; z-index: 9999;">
+                <h2>❌ GLTFLoader Yüklenemedi</h2>
+                <p>Sayfayı yenileyin.</p>
+            </div>
+        `;
+        return;
+    }
     
     document.body.style.margin = '0';
     document.body.style.padding = '0';
@@ -3930,10 +6655,11 @@ window.addEventListener('load', async () => {
     createGameUI();
     
     try {
-        
+        console.log('📦 Araç modelleri yükleniyor...');
         await loadCarModelsForSelection();
+        console.log('✅ Araç modelleri yüklendi');
         
-        
+        console.log('🎨 Menü oluşturuluyor...');
         createDayNightSelectionMenu();
         
         console.log('✅ 3D WebGL Araba Yarış Simülasyonu yüklendi!');
@@ -3941,6 +6667,7 @@ window.addEventListener('load', async () => {
         
     } catch (error) {
         console.error('❌ Oyun yüklenirken hata oluştu:', error);
+        console.error('Hata detayı:', error.stack);
         
         
         document.body.innerHTML = `
@@ -3987,18 +6714,40 @@ function carSelectionAnimationLoop() {
     try {
         
         if (currentDisplayedCar) {
-            currentDisplayedCar.rotation.y += 0.01; 
+            // Yavaş 360° döndürme - daha smooth
+            currentDisplayedCar.rotation.y += 0.008; 
             
+            // Yumuşak yukarı-aşağı hareket
+            currentDisplayedCar.position.y = 0.7 + Math.sin(Date.now() * 0.002) * 0.15;
             
-            currentDisplayedCar.position.y = Math.sin(Date.now() * 0.002) * 0.1;
+            // Hafif sallanma efekti (daha dinamik)
+            currentDisplayedCar.rotation.z = Math.sin(Date.now() * 0.003) * 0.05;
+            currentDisplayedCar.rotation.x = Math.sin(Date.now() * 0.004) * 0.03;
+        }
+        
+        // Kamera animasyonu - yumuşak hareket
+        if (carSelectionCamera) {
+            const time = Date.now() * 0.0005;
+            carSelectionCamera.position.x = Math.sin(time) * 0.5;
+            carSelectionCamera.position.y = 2 + Math.cos(time * 0.7) * 0.3;
+            carSelectionCamera.lookAt(0, 0.7, 0);
         }
         
         
         carSelectionScene.traverse((object) => {
             if (object.name === 'rotatingRing') {
-                object.rotation.y += 0.005;
+                object.rotation.y += 0.008; // Dış halka
+            }
+            if (object.name === 'innerRotatingRing') {
+                object.rotation.y -= 0.012; // İç halka ters yönde
             }
         });
+        
+        // Platform ışığının pulse efekti
+        const platformLight = carSelectionScene.children.find(child => child.isPointLight && child.position.y < 0);
+        if (platformLight) {
+            platformLight.intensity = 1.5 + Math.sin(Date.now() * 0.005) * 0.5;
+        }
         
         
         carSelectionRenderer.render(carSelectionScene, carSelectionCamera);
