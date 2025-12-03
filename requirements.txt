@@ -1,0 +1,15 @@
+# PyMAVLink Ground Control Station Requirements
+
+# Core dependencies
+pymavlink>=2.4.47
+pyserial>=3.5
+
+# Optional dependencies for enhanced features
+tkintermapview>=1.29
+pillow>=10.0.0
+geocoder>=1.38.1
+
+# Additional useful packages
+customtkinter>=5.2.0
+future>=1.0.0
+lxml>=4.9.0
