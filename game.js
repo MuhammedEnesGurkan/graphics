@@ -3787,13 +3787,13 @@ async function loadCarModelsForSelection() {
     // Başlık ikonlarını güncelle (eğer menü açıksa)
     const leftIcon = document.getElementById('leftTitleCarIcon');
     const rightIcon = document.getElementById('rightTitleCarIcon');
-    if (leftIcon && rightIcon && (leftIcon.innerHTML.includes('🚗') || rightIcon.innerHTML.includes('🚗'))) {
+    if (leftIcon && rightIcon) {
         console.log('🔄 Başlık ikonları güncelleniyor...');
         leftIcon.innerHTML = '';
         rightIcon.innerHTML = '';
-        if (loadedCarModels[0] && loadedCarModels[AVAILABLE_CARS.length - 1]) {
-            createMiniature3DCarIcon(leftIcon, 0);
-            createMiniature3DCarIcon(rightIcon, AVAILABLE_CARS.length - 1);
+        if (loadedCarModels[0]) {
+            createMiniature3DCarIcon(leftIcon, 0); // Lightning McQueen
+            createMiniature3DCarIcon(rightIcon, 0); // Lightning McQueen
         }
     }
 }
@@ -3801,15 +3801,15 @@ async function loadCarModelsForSelection() {
 // Minyatür 3D araba ikonu oluştur (başlık için)
 function createMiniature3DCarIcon(container, carIndex) {
     if (!container || carIndex < 0 || carIndex >= AVAILABLE_CARS.length) {
-        // Fallback: emoji göster
-        container.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+        // Fallback: boş bırak
+        container.innerHTML = '';
         return;
     }
     
     // Canvas oluştur
     const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
+    canvas.width = 360;
+    canvas.height = 360;
     canvas.style.width = '100%';
     canvas.style.height = '100%';
     canvas.style.display = 'block';
@@ -3830,7 +3830,7 @@ function createMiniature3DCarIcon(container, carIndex) {
         alpha: true, 
         antialias: true 
     });
-    renderer.setSize(160, 160);
+    renderer.setSize(360, 360);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -3902,8 +3902,8 @@ function createMiniature3DCarIcon(container, carIndex) {
     } else {
         // Model henüz yüklenmemişse yükle
         if (!loader) {
-            console.warn('⚠️ GLTFLoader bulunamadı, emoji gösteriliyor');
-            container.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+            console.warn('⚠️ GLTFLoader bulunamadı');
+            container.innerHTML = '';
             return;
         }
         
@@ -3915,8 +3915,8 @@ function createMiniature3DCarIcon(container, carIndex) {
             undefined,
             (error) => {
                 console.warn(`⚠️ Minyatür araba ikonu yüklenemedi:`, error);
-                // Fallback: emoji göster
-                container.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+                // Fallback: boş bırak
+                container.innerHTML = '';
             }
         );
     }
@@ -4475,7 +4475,8 @@ function createCarSelectionMenu() {
     const titleContainer = document.createElement('div');
     titleContainer.style.cssText = `
         position: relative;
-        margin-bottom: 30px;
+        margin-bottom: 10px;
+        margin-top: 20px;
         text-align: center;
         z-index: 1;
     `;
@@ -4485,9 +4486,12 @@ function createCarSelectionMenu() {
     leftCarIcon.id = 'leftTitleCarIcon';
     leftCarIcon.style.cssText = `
         display: inline-block;
-        width: 80px;
-        height: 80px;
-        margin-right: 20px;
+        width: 180px;
+        height: 180px;
+        margin-right: -40px;
+        margin-left: -60px;
+        margin-top: -100px;
+        transform: translateX(-40px);
         animation: carIconFloat 3s ease-in-out infinite, carIconPulse 2s ease-in-out infinite;
         cursor: pointer;
         transition: transform 0.3s ease, filter 0.3s ease;
@@ -4501,9 +4505,11 @@ function createCarSelectionMenu() {
     rightCarIcon.id = 'rightTitleCarIcon';
     rightCarIcon.style.cssText = `
         display: inline-block;
-        width: 80px;
-        height: 80px;
-        margin-left: 20px;
+        width: 180px;
+        height: 180px;
+        margin-left: -20px;
+        margin-top: -100px;
+        transform: translateX(-40px);
         animation: carIconFloat 3s ease-in-out infinite 1.5s, carIconPulse 2s ease-in-out infinite 1s;
         cursor: pointer;
         transition: transform 0.3s ease, filter 0.3s ease;
@@ -4514,20 +4520,20 @@ function createCarSelectionMenu() {
     
     // Car icon hover efektleri
     leftCarIcon.addEventListener('mouseenter', () => {
-        leftCarIcon.style.transform = 'scale(1.3) rotate(15deg)';
+        leftCarIcon.style.transform = 'translateX(-40px) scale(1.3) rotate(15deg)';
         leftCarIcon.style.filter = 'drop-shadow(0 0 20px rgba(0, 255, 255, 1))';
     });
     leftCarIcon.addEventListener('mouseleave', () => {
-        leftCarIcon.style.transform = 'scale(1) rotate(0deg)';
+        leftCarIcon.style.transform = 'translateX(-40px) scale(1) rotate(0deg)';
         leftCarIcon.style.filter = 'drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))';
     });
     
     rightCarIcon.addEventListener('mouseenter', () => {
-        rightCarIcon.style.transform = 'scale(1.3) rotate(-15deg)';
+        rightCarIcon.style.transform = 'translateX(-40px) scale(1.3) rotate(-15deg)';
         rightCarIcon.style.filter = 'drop-shadow(0 0 20px rgba(0, 255, 255, 1))';
     });
     rightCarIcon.addEventListener('mouseleave', () => {
-        rightCarIcon.style.transform = 'scale(1) rotate(0deg)';
+        rightCarIcon.style.transform = 'translateX(-40px) scale(1) rotate(0deg)';
         rightCarIcon.style.filter = 'drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))';
     });
     
@@ -4553,40 +4559,35 @@ function createCarSelectionMenu() {
             }
         }
         
-        // Modeller yüklenene kadar bekle (maksimum 15 saniye)
+        // Lightning McQueen (index 0) yüklenene kadar bekle (maksimum 15 saniye)
         let attempts = 0;
-        while ((!loadedCarModels || loadedCarModels.length === 0 || !loadedCarModels[0] || !loadedCarModels[AVAILABLE_CARS.length - 1]) && attempts < 150) {
+        while ((!loadedCarModels || loadedCarModels.length === 0 || !loadedCarModels[0]) && attempts < 150) {
             await new Promise(resolve => setTimeout(resolve, 100));
             attempts++;
         }
         
-        // 3D modelleri oluştur
-        if (loadedCarModels && loadedCarModels.length > 0 && loadedCarModels[0] && loadedCarModels[AVAILABLE_CARS.length - 1]) {
-            console.log('🎨 3D minyatür ikonlar oluşturuluyor...');
-            console.log('📊 Sol ikon için model:', loadedCarModels[0] ? 'Yüklü' : 'Yok');
-            console.log('📊 Sağ ikon için model:', loadedCarModels[AVAILABLE_CARS.length - 1] ? 'Yüklü' : 'Yok');
+        // Lightning McQueen'i her iki tarafta da göster
+        if (loadedCarModels && loadedCarModels.length > 0 && loadedCarModels[0]) {
+            console.log('🎨 Lightning McQueen minyatür ikonları oluşturuluyor...');
+            console.log('📊 Lightning McQueen modeli:', loadedCarModels[0] ? 'Yüklü' : 'Yok');
             
             // Placeholder'ı temizle
             leftCarIcon.innerHTML = '';
             rightCarIcon.innerHTML = '';
             
-            // 3D modelleri oluştur
+            // Lightning McQueen'i her iki tarafta da oluştur
             try {
-                createMiniature3DCarIcon(leftCarIcon, 0); // İlk araba
-                createMiniature3DCarIcon(rightCarIcon, AVAILABLE_CARS.length - 1); // Son araba
-                console.log('✅ 3D ikonlar oluşturuldu');
+                createMiniature3DCarIcon(leftCarIcon, 0); // Lightning McQueen
+                createMiniature3DCarIcon(rightCarIcon, 0); // Lightning McQueen
+                console.log('✅ Lightning McQueen ikonları oluşturuldu');
             } catch (error) {
-                console.error('❌ 3D ikon oluşturulurken hata:', error);
-                // Fallback: emoji göster
-                leftCarIcon.innerHTML = '<span style="font-size: 60px;">🚗</span>';
-                rightCarIcon.innerHTML = '<span style="font-size: 60px;">🚗</span>';
+                console.error('❌ Lightning McQueen ikon oluşturulurken hata:', error);
             }
         } else {
-            console.warn('⚠️ Modeller yüklenemedi, emoji ikonlar kullanılıyor');
+            console.warn('⚠️ Lightning McQueen modeli yüklenemedi');
             console.warn('📊 loadedCarModels durumu:', {
                 length: loadedCarModels ? loadedCarModels.length : 0,
-                first: loadedCarModels && loadedCarModels[0] ? 'Yüklü' : 'Yok',
-                last: loadedCarModels && loadedCarModels[AVAILABLE_CARS.length - 1] ? 'Yüklü' : 'Yok'
+                lightningMcQueen: loadedCarModels && loadedCarModels[0] ? 'Yüklü' : 'Yok'
             });
         }
     };
@@ -4596,8 +4597,8 @@ function createCarSelectionMenu() {
     
     // Modeller yüklendikten sonra tekrar güncelle (güvenlik için)
     setTimeout(() => {
-        if (leftCarIcon.innerHTML.includes('🚗') || rightCarIcon.innerHTML.includes('🚗')) {
-            console.log('🔄 İkonlar hala emoji, tekrar güncelleniyor...');
+        if (leftCarIcon.innerHTML === '' || rightCarIcon.innerHTML === '') {
+            console.log('🔄 İkonlar hala boş, tekrar güncelleniyor...');
             updateTitleIcons();
         }
     }, 2000);
@@ -4619,7 +4620,7 @@ function createCarSelectionMenu() {
         position: relative;
         display: inline-block;
     `;
-    title.textContent = 'ARAÇ SEÇİMİ';
+    title.textContent = 'CAR SELECTION';
     
     // Add CSS animation for enhanced title glow
     if (!document.getElementById('titleGlowEnhancedStyle')) {
@@ -4729,8 +4730,8 @@ function createCarSelectionMenu() {
     
     const sceneContainer = document.createElement('div');
     sceneContainer.style.position = 'relative';
-    sceneContainer.style.width = '900px'; 
-    sceneContainer.style.height = '650px'; 
+    sceneContainer.style.width = '1200px'; 
+    sceneContainer.style.height = '800px'; 
     sceneContainer.style.border = '4px solid transparent';
     sceneContainer.style.borderRadius = '20px';
     sceneContainer.style.background = 'linear-gradient(45deg, #1a1a2e, #16213e, #0f3460)';
@@ -4863,15 +4864,15 @@ function createCarSelectionMenu() {
     `;
     performancePanel.innerHTML = `
         <div style="color: #FFD700; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);">
-            📊 KARŞILAŞTIRMA
+            📊 COMPARISON
         </div>
         <div style="color: #CCCCCC; font-size: 12px; line-height: 1.8;">
-            <div style="margin-bottom: 10px;">💡 Araçları karşılaştırın</div>
-            <div style="margin-bottom: 10px;">⚡ Performans metrikleri</div>
-            <div style="margin-bottom: 10px;">🎯 Her araç benzersiz</div>
+            <div style="margin-bottom: 10px;">💡 Compare vehicles</div>
+            <div style="margin-bottom: 10px;">⚡ Performance metrics</div>
+            <div style="margin-bottom: 10px;">🎯 Each vehicle is unique</div>
             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 215, 0, 0.3);">
                 <div style="color: #00FFFF; font-size: 11px;">
-                    💡 İpucu: Araçlar otomatik döner
+                    💡 Tip: Cars rotate automatically
                 </div>
             </div>
         </div>
@@ -4890,7 +4891,7 @@ function createCarSelectionMenu() {
 
     
     const prevButton = document.createElement('button');
-    prevButton.innerHTML = '⬅️ ÖNCEKİ';
+    prevButton.innerHTML = '⬅️ PREVIOUS';
     prevButton.style.cssText = `
         background: linear-gradient(135deg, #e74c3c, #c0392b);
         border: 2px solid rgba(255, 255, 255, 0.3);
@@ -4936,7 +4937,7 @@ function createCarSelectionMenu() {
 
     
     const nextButton = document.createElement('button');
-    nextButton.innerHTML = 'SONRAKİ ➡️';
+    nextButton.innerHTML = 'NEXT ➡️';
     nextButton.style.cssText = `
         background: linear-gradient(135deg, #3498db, #2980b9);
         border: 2px solid rgba(255, 255, 255, 0.3);
@@ -5047,7 +5048,7 @@ function createCarSelectionMenu() {
 
     
     const startButton = document.createElement('button');
-    startButton.textContent = '🏁 OYUNU BAŞLAT 🏁';
+    startButton.textContent = '🏁 START GAME 🏁';
     startButton.style.background = 'linear-gradient(45deg, #27ae60, #2ecc71)';
     startButton.style.border = 'none';
     startButton.style.borderRadius = '25px';
@@ -5086,17 +5087,27 @@ function createCarSelectionMenu() {
 
     
     const instructions = document.createElement('div');
-    instructions.style.color = '#CCCCCC';
-    instructions.style.fontSize = '16px';
-    instructions.style.textAlign = 'center';
-    instructions.style.marginTop = '20px';
-    instructions.style.lineHeight = '1.5';
+    instructions.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        color: #CCCCCC;
+        font-size: 13px;
+        text-align: left;
+        line-height: 1.5;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 12px 18px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        z-index: 100;
+        max-width: 220px;
+    `;
     instructions.innerHTML = `
-        <p><strong>🎮 Kontroller:</strong></p>
-        <p>← → Ok Tuşları: Araç değiştir | Enter/Space: Başlat</p>
-        <p>💡 L Tuşu: Işığı Aç/Kapat</p>
-        <p>🎛️ I Tuşu: Işık Miktarı Paneli</p>
-        <p>🔘 Sağ üstte butonlar ile de kontrol edilebilir</p>
+        <p><strong>🎮 Controls:</strong></p>
+        <p>← → Arrow Keys: Change car | Enter/Space: Start</p>
+        <p>💡 L Key: Toggle Light</p>
+        <p>🎛️ I Key: Light Control Panel</p>
+        <p>🔘 Can also be controlled with buttons at top right</p>
     `;
     menuContainer.appendChild(instructions);
 
@@ -5111,7 +5122,7 @@ function createCarSelectionMenu() {
     lightControlContainer.style.gap = '10px';
 
     lightToggleButton = document.createElement('button');
-    lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Işık: AÇIK' : '🌙 Işık: KAPALI';
+    lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Light: ON' : '🌙 Light: OFF';
     lightToggleButton.style.background = carSelectionLightsEnabled ? 
         'linear-gradient(45deg, #FFD700, #FFA500)' : 
         'linear-gradient(45deg, #2C3E50, #34495E)';
@@ -5130,7 +5141,7 @@ function createCarSelectionMenu() {
 
     
     const lightIntensityButton = document.createElement('button');
-    lightIntensityButton.innerHTML = '🎛️ Işık Miktarı';
+    lightIntensityButton.innerHTML = '🎛️ Light Intensity';
     lightIntensityButton.style.background = 'linear-gradient(45deg, #9B59B6, #8E44AD)';
     lightIntensityButton.style.border = 'none';
     lightIntensityButton.style.borderRadius = '15px';
@@ -5775,20 +5786,148 @@ function createCarSelectionMenu() {
     menuContainer.style.fontFamily = 'Arial, sans-serif';
 
     
+    // Modern title with Lightning McQueen 3D icons
+    const titleContainer = document.createElement('div');
+    titleContainer.style.cssText = `
+        position: relative;
+        margin-bottom: 10px;
+        margin-top: 20px;
+        text-align: center;
+        z-index: 1;
+    `;
+    
+    // Sol araba ikonu - Lightning McQueen 3D model
+    const leftCarIcon = document.createElement('div');
+    leftCarIcon.id = 'leftTitleCarIcon';
+    leftCarIcon.style.cssText = `
+        display: inline-block;
+        width: 180px;
+        height: 180px;
+        margin-right: -40px;
+        margin-left: -60px;
+        margin-top: -100px;
+        transform: translateX(-40px);
+        animation: carIconFloat 3s ease-in-out infinite, carIconPulse 2s ease-in-out infinite;
+        cursor: pointer;
+        transition: transform 0.3s ease, filter 0.3s ease;
+        filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.6));
+        position: relative;
+        vertical-align: middle;
+    `;
+    
+    // Sağ araba ikonu - Lightning McQueen 3D model
+    const rightCarIcon = document.createElement('div');
+    rightCarIcon.id = 'rightTitleCarIcon';
+    rightCarIcon.style.cssText = `
+        display: inline-block;
+        width: 180px;
+        height: 180px;
+        margin-left: -20px;
+        margin-top: -100px;
+        transform: translateX(-40px);
+        animation: carIconFloat 3s ease-in-out infinite 1.5s, carIconPulse 2s ease-in-out infinite 1s;
+        cursor: pointer;
+        transition: transform 0.3s ease, filter 0.3s ease;
+        filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.6));
+        position: relative;
+        vertical-align: middle;
+    `;
+    
+    // Car icon hover efektleri
+    leftCarIcon.addEventListener('mouseenter', () => {
+        leftCarIcon.style.transform = 'translateX(-40px) scale(1.3) rotate(15deg)';
+        leftCarIcon.style.filter = 'drop-shadow(0 0 20px rgba(0, 255, 255, 1))';
+    });
+    leftCarIcon.addEventListener('mouseleave', () => {
+        leftCarIcon.style.transform = 'translateX(-40px) scale(1) rotate(0deg)';
+        leftCarIcon.style.filter = 'drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))';
+    });
+    
+    rightCarIcon.addEventListener('mouseenter', () => {
+        rightCarIcon.style.transform = 'translateX(-40px) scale(1.3) rotate(-15deg)';
+        rightCarIcon.style.filter = 'drop-shadow(0 0 20px rgba(0, 255, 255, 1))';
+    });
+    rightCarIcon.addEventListener('mouseleave', () => {
+        rightCarIcon.style.transform = 'translateX(-40px) scale(1) rotate(0deg)';
+        rightCarIcon.style.filter = 'drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))';
+    });
+    
     const title = document.createElement('h1');
-    title.textContent = '🚗 ARAÇ SEÇİMİ 🚗';
-    title.style.color = '#FFFFFF';
-    title.style.marginBottom = '20px';
-    title.style.fontSize = '48px';
-    title.style.textShadow = '3px 3px 6px rgba(0,0,0,0.8)';
-    title.style.textAlign = 'center';
-    menuContainer.appendChild(title);
+    title.style.cssText = `
+        color: #FFFFFF;
+        font-size: 72px;
+        font-weight: 900;
+        text-shadow: 
+            0 0 10px rgba(0, 255, 255, 0.8),
+            0 0 20px rgba(0, 255, 255, 0.6),
+            0 0 30px rgba(0, 255, 255, 0.4),
+            0 0 40px rgba(0, 255, 255, 0.2),
+            0 0 60px rgba(0, 255, 255, 0.1);
+        margin: 0;
+        letter-spacing: 5px;
+        animation: titleGlowEnhanced 2s ease-in-out infinite alternate;
+        position: relative;
+        display: inline-block;
+    `;
+    title.textContent = 'CAR SELECTION';
+    
+    titleContainer.appendChild(leftCarIcon);
+    titleContainer.appendChild(title);
+    titleContainer.appendChild(rightCarIcon);
+    menuContainer.appendChild(titleContainer);
+    
+    // Lightning McQueen 3D modellerini yükle ve render et
+    leftCarIcon.innerHTML = '';
+    rightCarIcon.innerHTML = '';
+    
+    const updateTitleIcons = async () => {
+        console.log('🎨 Başlık ikonları güncelleniyor (2. menü)...');
+        
+        if (!loadedCarModels || loadedCarModels.length === 0) {
+            console.log('📦 Başlık ikonları için modeller yükleniyor...');
+            try {
+                await loadCarModelsForSelection();
+                console.log('✅ Modeller yüklendi, Lightning McQueen ikonları oluşturuluyor...');
+            } catch (error) {
+                console.error('❌ Modeller yüklenirken hata:', error);
+                return;
+            }
+        }
+        
+        let attempts = 0;
+        while ((!loadedCarModels || loadedCarModels.length === 0 || !loadedCarModels[0]) && attempts < 150) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        if (loadedCarModels && loadedCarModels.length > 0 && loadedCarModels[0]) {
+            console.log('🎨 Lightning McQueen minyatür ikonları oluşturuluyor (2. menü)...');
+            leftCarIcon.innerHTML = '';
+            rightCarIcon.innerHTML = '';
+            try {
+                createMiniature3DCarIcon(leftCarIcon, 0); // Lightning McQueen
+                createMiniature3DCarIcon(rightCarIcon, 0); // Lightning McQueen
+                console.log('✅ Lightning McQueen ikonları oluşturuldu (2. menü)');
+            } catch (error) {
+                console.error('❌ Lightning McQueen ikon oluşturulurken hata:', error);
+            }
+        }
+    };
+    
+    updateTitleIcons();
+    
+    setTimeout(() => {
+        if (leftCarIcon.innerHTML === '' || rightCarIcon.innerHTML === '') {
+            console.log('🔄 İkonlar hala boş, tekrar güncelleniyor (2. menü)...');
+            updateTitleIcons();
+        }
+    }, 2000);
 
     
     const sceneContainer = document.createElement('div');
     sceneContainer.style.position = 'relative';
-    sceneContainer.style.width = '1000px'; 
-    sceneContainer.style.height = '600px'; 
+    sceneContainer.style.width = '1200px'; 
+    sceneContainer.style.height = '800px'; 
     sceneContainer.style.border = '3px solid #FFD700';
     sceneContainer.style.borderRadius = '15px';
     sceneContainer.style.background = 'linear-gradient(45deg, #2c3e50, #3498db)';
@@ -5842,15 +5981,15 @@ function createCarSelectionMenu() {
     `;
     performancePanel.innerHTML = `
         <div style="color: #FFD700; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);">
-            📊 KARŞILAŞTIRMA
+            📊 COMPARISON
         </div>
         <div style="color: #CCCCCC; font-size: 12px; line-height: 1.8;">
-            <div style="margin-bottom: 10px;">💡 Araçları karşılaştırın</div>
-            <div style="margin-bottom: 10px;">⚡ Performans metrikleri</div>
-            <div style="margin-bottom: 10px;">🎯 Her araç benzersiz</div>
+            <div style="margin-bottom: 10px;">💡 Compare vehicles</div>
+            <div style="margin-bottom: 10px;">⚡ Performance metrics</div>
+            <div style="margin-bottom: 10px;">🎯 Each vehicle is unique</div>
             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 215, 0, 0.3);">
                 <div style="color: #00FFFF; font-size: 11px;">
-                    💡 İpucu: Araçlar otomatik döner
+                    💡 Tip: Cars rotate automatically
                 </div>
             </div>
         </div>
@@ -5868,7 +6007,7 @@ function createCarSelectionMenu() {
 
     
     const prevButton = document.createElement('button');
-    prevButton.innerHTML = '⬅️ ÖNCEKİ';
+    prevButton.innerHTML = '⬅️ PREVIOUS';
     prevButton.style.background = 'linear-gradient(45deg, #e74c3c, #c0392b)';
     prevButton.style.border = 'none';
     prevButton.style.borderRadius = '15px';
@@ -5883,7 +6022,7 @@ function createCarSelectionMenu() {
 
     
     const nextButton = document.createElement('button');
-    nextButton.innerHTML = 'SONRAKİ ➡️';
+    nextButton.innerHTML = 'NEXT ➡️';
     nextButton.style.background = 'linear-gradient(45deg, #3498db, #2980b9)';
     nextButton.style.border = 'none';
     nextButton.style.borderRadius = '15px';
@@ -5914,7 +6053,7 @@ function createCarSelectionMenu() {
 
     
     const startButton = document.createElement('button');
-    startButton.textContent = '🏁 OYUNU BAŞLAT 🏁';
+    startButton.textContent = '🏁 START GAME 🏁';
     startButton.style.background = 'linear-gradient(45deg, #27ae60, #2ecc71)';
     startButton.style.border = 'none';
     startButton.style.borderRadius = '25px';
@@ -5953,17 +6092,27 @@ function createCarSelectionMenu() {
 
     
     const instructions = document.createElement('div');
-    instructions.style.color = '#CCCCCC';
-    instructions.style.fontSize = '16px';
-    instructions.style.textAlign = 'center';
-    instructions.style.marginTop = '20px';
-    instructions.style.lineHeight = '1.5';
+    instructions.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        color: #CCCCCC;
+        font-size: 13px;
+        text-align: left;
+        line-height: 1.5;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 12px 18px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        z-index: 100;
+        max-width: 220px;
+    `;
     instructions.innerHTML = `
-        <p><strong>🎮 Kontroller:</strong></p>
-        <p>← → Ok Tuşları: Araç değiştir | Enter/Space: Başlat</p>
-        <p>💡 L Tuşu: Işığı Aç/Kapat</p>
-        <p>🎛️ I Tuşu: Işık Miktarı Paneli</p>
-        <p>🔘 Sağ üstte butonlar ile de kontrol edilebilir</p>
+        <p><strong>🎮 Controls:</strong></p>
+        <p>← → Arrow Keys: Change car | Enter/Space: Start</p>
+        <p>💡 L Key: Toggle Light</p>
+        <p>🎛️ I Key: Light Control Panel</p>
+        <p>🔘 Can also be controlled with buttons at top right</p>
     `;
     menuContainer.appendChild(instructions);
 
@@ -5978,7 +6127,7 @@ function createCarSelectionMenu() {
     lightControlContainer.style.gap = '10px';
 
     lightToggleButton = document.createElement('button');
-    lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Işık: AÇIK' : '🌙 Işık: KAPALI';
+    lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Light: ON' : '🌙 Light: OFF';
     lightToggleButton.style.background = carSelectionLightsEnabled ? 
         'linear-gradient(45deg, #FFD700, #FFA500)' : 
         'linear-gradient(45deg, #2C3E50, #34495E)';
@@ -5997,7 +6146,7 @@ function createCarSelectionMenu() {
 
     
     const lightIntensityButton = document.createElement('button');
-    lightIntensityButton.innerHTML = '🎛️ Işık Miktarı';
+    lightIntensityButton.innerHTML = '🎛️ Light Intensity';
     lightIntensityButton.style.background = 'linear-gradient(45deg, #9B59B6, #8E44AD)';
     lightIntensityButton.style.border = 'none';
     lightIntensityButton.style.borderRadius = '15px';
@@ -6126,7 +6275,7 @@ async function init3DCarSelectionScene() {
     carSelectionScene.background = new THREE.Color(0x1a1a2e);
 
     
-    carSelectionCamera = new THREE.PerspectiveCamera(75, 800/600, 0.1, 1000); 
+    carSelectionCamera = new THREE.PerspectiveCamera(75, 1200/800, 0.1, 1000); 
     carSelectionCamera.position.set(0, 2, 6); 
     carSelectionCamera.lookAt(0, 0, 0); 
 
@@ -6186,7 +6335,7 @@ async function init3DCarSelectionScene() {
 
     
     // Gelişmiş dönen halka - daha büyük ve parlak
-    const ringGeometry = new THREE.TorusGeometry(3.5, 0.15, 16, 64);
+    const ringGeometry = new THREE.TorusGeometry(4.2, 0.18, 16, 64);
     const ringMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xFFD700,
         transparent: true,
@@ -6201,7 +6350,7 @@ async function init3DCarSelectionScene() {
     carSelectionScene.add(ring);
     
     // İç halka - daha küçük, ters yönde dönen
-    const innerRingGeometry = new THREE.TorusGeometry(2.8, 0.1, 12, 48);
+    const innerRingGeometry = new THREE.TorusGeometry(3.4, 0.12, 12, 48);
     const innerRingMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x00FFFF,
         transparent: true,
@@ -6375,7 +6524,7 @@ function updateCarDisplay() {
                 <!-- Performans Göstergeleri -->
                 <div style="margin-top: 20px; border-top: 1px solid rgba(0, 255, 255, 0.3); padding-top: 15px;">
                     <div style="color: #00FFFF; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);">
-                        ⚡ PERFORMANS METRİKLERİ
+                        ⚡ PERFORMANCE METRICS
                     </div>
                     
                     <!-- Hız -->
@@ -7112,7 +7261,7 @@ function toggleCarSelectionLights() {
 function updateLightToggleButton() {
     if (!lightToggleButton) return;
     
-    lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Işık: AÇIK' : '🌙 Işık: KAPALI';
+    lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Light: ON' : '🌙 Light: OFF';
     lightToggleButton.style.background = carSelectionLightsEnabled ? 
         'linear-gradient(45deg, #FFD700, #FFA500)' : 
         'linear-gradient(45deg, #2C3E50, #34495E)';
@@ -7225,7 +7374,7 @@ function createLightIntensityPanel() {
 
     
     const title = document.createElement('h3');
-    title.textContent = '🎛️ Işık Miktarı Kontrolü';
+    title.textContent = '🎛️ Light Intensity Control';
     title.style.cssText = `
         margin: 0 0 20px 0;
         color: #FFD700;
