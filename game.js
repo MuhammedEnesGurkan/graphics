@@ -307,7 +307,7 @@ const AVAILABLE_CARS = [
 {
     name: "The King",
     path: "graphics_three/assets/the_king.glb",
-    scale: 0.12,
+        scale: 0.12,
     description: "Tecrübeli ve saygı duyulan emektar yarışçı"
 }
 ,
@@ -1860,10 +1860,13 @@ function createDayNightSelectionMenu() {
     dayOption.style.transition = 'all 0.3s ease';
     dayOption.style.minWidth = '200px';
 
+    // Güneş ikonu: orijinal ☀️ karakteri, üstüne yüz overlay'i
     const dayIcon = document.createElement('div');
     dayIcon.style.fontSize = '60px';
     dayIcon.textContent = '☀️';
     dayIcon.style.marginBottom = '10px';
+    dayIcon.style.transition = 'transform 0.4s ease';
+    dayIcon.style.position = 'relative';
 
     const dayText = document.createElement('h3');
     dayText.textContent = 'GÜNDÜZ';
@@ -1891,10 +1894,147 @@ function createDayNightSelectionMenu() {
     nightOption.style.transition = 'all 0.3s ease';
     nightOption.style.minWidth = '200px';
 
+    // Ay ikonu: tamamen özel çizim (hilal + bulutlar)
     const nightIcon = document.createElement('div');
-    nightIcon.style.fontSize = '60px';
-    nightIcon.textContent = '🌙';
-    nightIcon.style.marginBottom = '10px';
+    nightIcon.style.position = 'relative';
+    nightIcon.style.width = '80px';
+    nightIcon.style.height = '80px';
+    nightIcon.style.margin = '0 auto 10px auto';
+    nightIcon.style.transition = 'transform 0.4s ease';
+
+    // Dış sarı daire (ay gövdesi için temel)
+    const moonBase = document.createElement('div');
+    moonBase.style.position = 'absolute';
+    moonBase.style.width = '80px';
+    moonBase.style.height = '80px';
+    moonBase.style.borderRadius = '50%';
+    moonBase.style.background = 'radial-gradient(circle at 30% 25%, #ffe9a9 0, #ffd54f 35%, #ffb300 80%)';
+    moonBase.style.boxShadow = '0 0 18px rgba(255, 213, 79, 0.7)';
+    nightIcon.appendChild(moonBase);
+
+    // İçteki mor arka plan ile hilal efekti
+    const moonInnerCut = document.createElement('div');
+    moonInnerCut.style.position = 'absolute';
+    moonInnerCut.style.width = '72px';
+    moonInnerCut.style.height = '72px';
+    moonInnerCut.style.borderRadius = '50%';
+    moonInnerCut.style.right = '2px';
+    moonInnerCut.style.top = '4px';
+    moonInnerCut.style.background = 'rgba(86, 79, 142, 1)'; // sayfanın mor tonuna yakın
+    nightIcon.appendChild(moonInnerCut);
+
+    // Hilali biraz eğmek için tüm ikonu döndür
+    nightIcon.style.transform = 'rotate(-12deg)';
+
+    // Güneş ve Ay için göz elemanları oluştur
+    const createEyes = (parent, isSun) => {
+        const eyeContainer = document.createElement('div');
+        eyeContainer.style.position = 'absolute';
+        eyeContainer.style.top = isSun ? '20px' : '30px';
+        // Güneş için tam ortada, ay için hilalin iç tarafında
+        eyeContainer.style.left = isSun ? '50%' : '60%';
+        eyeContainer.style.transform = 'translateX(-50%)';
+        eyeContainer.style.display = 'flex';
+        eyeContainer.style.gap = isSun ? '6px' : '0px';
+        
+        let leftEye;
+        let rightEye = null;
+
+        if (isSun) {
+            // Güneş: iki yuvarlak göz
+            const makeEye = () => {
+                const eye = document.createElement('div');
+                eye.style.width = '8px';
+                eye.style.height = '8px';
+                eye.style.borderRadius = '50%';
+                eye.style.background = '#000000';
+                eye.style.boxShadow = '0 0 3px rgba(0,0,0,0.6)';
+                eye.style.transformOrigin = '50% 50%';
+                return eye;
+            };
+
+            leftEye = makeEye();
+            rightEye = makeEye();
+            leftEye.classList.add('sun-eye-left');
+            rightEye.classList.add('sun-eye-right');
+            eyeContainer.appendChild(leftEye);
+            eyeContainer.appendChild(rightEye);
+        } else {
+            // Ay: sadece kapalı yay göz (kirpik yok)
+            const closedEye = document.createElement('div');
+            closedEye.style.position = 'relative';
+            closedEye.style.width = '16px';
+            closedEye.style.height = '8px';
+            
+            const eyeArc = document.createElement('div');
+            eyeArc.style.position = 'absolute';
+            eyeArc.style.width = '14px';
+            eyeArc.style.height = '8px';
+            eyeArc.style.borderBottom = '2px solid #000';
+            eyeArc.style.borderRadius = '0 0 14px 14px';
+            eyeArc.style.left = '0';
+            eyeArc.style.top = '2px';
+
+            closedEye.appendChild(eyeArc);
+
+            closedEye.classList.add('moon-eye-single');
+            eyeContainer.appendChild(closedEye);
+            leftEye = eyeArc; // blink animasyonu için ana yay'ı hedef al
+        }
+
+        parent.appendChild(eyeContainer);
+
+        return { leftEye, rightEye };
+    };
+
+    const sunEyes = createEyes(dayIcon, true);
+    const moonEyes = createEyes(nightIcon, false);
+
+    // Güneşe yanak ve gülücük ekle (emoji bozulmadan üzerine çizim)
+    const makeCheek = (left) => {
+        const cheek = document.createElement('div');
+        cheek.style.position = 'absolute';
+        cheek.style.width = '10px';
+        cheek.style.height = '10px';
+        cheek.style.borderRadius = '50%';
+        cheek.style.background = '#ff8a80';
+        cheek.style.opacity = '0.9';
+        cheek.style.top = '40px';
+        cheek.style[left ? 'left' : 'right'] = '18px';
+        return cheek;
+    };
+    const leftCheek = makeCheek(true);
+    const rightCheek = makeCheek(false);
+
+    const mouth = document.createElement('div');
+    mouth.style.position = 'absolute';
+    mouth.style.width = '24px';
+    mouth.style.height = '12px';
+    mouth.style.borderBottom = '3px solid #5d4037';
+    mouth.style.borderRadius = '0 0 20px 20px';
+    mouth.style.left = '50%';
+    mouth.style.top = '46px';
+    mouth.style.transform = 'translateX(-50%)';
+
+    dayIcon.appendChild(leftCheek);
+    dayIcon.appendChild(rightCheek);
+    dayIcon.appendChild(mouth);
+
+    // Ay için daha doğal görünüm: küçük tek göz + hafif gülümseme
+    const moonSmile = document.createElement('div');
+    moonSmile.style.position = 'absolute';
+    // Çeyrek daire şeklinde hafif gülümseme
+    moonSmile.style.width = '16px';
+    moonSmile.style.height = '16px';
+    moonSmile.style.border = '0';
+    moonSmile.style.borderBottom = '2px solid rgba(0,0,0,0.75)';
+    moonSmile.style.borderRight = '2px solid rgba(0,0,0,0.75)';
+    moonSmile.style.borderRadius = '0 0 18px 0';
+    // Hilalin üst yüzüne daha iyi oturması için konum
+    moonSmile.style.left = '58%';
+    moonSmile.style.top = '42px';
+    moonSmile.style.transform = 'translateX(-50%) rotate(5deg)';
+    nightIcon.appendChild(moonSmile);
 
     const nightText = document.createElement('h3');
     nightText.textContent = 'GECE';
@@ -1911,23 +2051,129 @@ function createDayNightSelectionMenu() {
     nightOption.appendChild(nightText);
     nightOption.appendChild(nightDesc);
 
+    // Göz kırpma animasyonu için global CSS ekle
+    if (!document.getElementById('eyeBlinkStyles')) {
+        const style = document.createElement('style');
+        style.id = 'eyeBlinkStyles';
+        style.textContent = `
+            @keyframes eyeBlink {
+                0%, 100% { transform: scaleY(1); }
+                40%     { transform: scaleY(0.1); }
+                60%     { transform: scaleY(1); }
+            }
+            .blink-once {
+                animation: eyeBlink 0.4s ease-in-out 1;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function triggerSunBlink() {
+        [sunEyes.leftEye, sunEyes.rightEye].forEach(eye => {
+            if (!eye) return;
+            eye.classList.remove('blink-once'); // reset
+            void eye.offsetWidth; // reflow for restart
+            eye.classList.add('blink-once');
+        });
+    }
+
+    // Ay göz kırpma: verilen süre boyunca tek gözü tekrar tekrar kırpar
+    function triggerMoonBlinkForDuration(durationMs = 2000) {
+        const eye = moonEyes.leftEye;
+        if (!eye) return Promise.resolve();
+
+        return new Promise((resolve) => {
+            const intervalMs = 350;
+            let elapsed = 0;
+
+            const intervalId = setInterval(() => {
+                // Blink animasyonunu yeniden başlat
+                eye.classList.remove('blink-once');
+                void eye.offsetWidth;
+                eye.classList.add('blink-once');
+
+                elapsed += intervalMs;
+                if (elapsed >= durationMs) {
+                    clearInterval(intervalId);
+                    resolve();
+                }
+            }, intervalMs);
+        });
+    }
+
     function updateSelection() {
         if (!isNightMode) {
             dayOption.style.background = 'rgba(255,255,255,0.3)';
             dayOption.style.border = '3px solid #FFD700';
             dayOption.style.transform = 'scale(1.1)';
+            dayIcon.style.transform = 'scale(1.15) rotate(10deg)';
             nightOption.style.background = 'rgba(255,255,255,0.1)';
             nightOption.style.border = '2px solid #FFFFFF';
             nightOption.style.transform = 'scale(1)';
+            nightIcon.style.transform = 'scale(1)';
         } else {
             nightOption.style.background = 'rgba(255,255,255,0.3)';
             nightOption.style.border = '3px solid #FFD700';
             nightOption.style.transform = 'scale(1.1)';
+            nightIcon.style.transform = 'scale(1.15) rotate(-10deg)';
             dayOption.style.background = 'rgba(255,255,255,0.1)';
             dayOption.style.border = '2px solid #FFFFFF';
             dayOption.style.transform = 'scale(1)';
+            dayIcon.style.transform = 'scale(1)';
         }
     }
+    
+    // Hover animasyonları:
+    // - Güneş: önce kendi etrafında hızlı bir tur, sonra yavaş ve stabil dönüş
+    // - Ay   : klasik sağa-sola sallanma (wobble) animasyonu
+    if (!document.getElementById('sunMoonWobbleStyles')) {
+        const style = document.createElement('style');
+        style.id = 'sunMoonWobbleStyles';
+        style.textContent = `
+            @keyframes sunSpinOnce {
+                0%   { transform: scale(1.2) rotate(0deg); }
+                100% { transform: scale(1.2) rotate(360deg); }
+            }
+            @keyframes sunSlow {
+                0%   { transform: scale(1.2) rotate(0deg); }
+                100% { transform: scale(1.2) rotate(360deg); }
+            }
+            @keyframes moonWobble {
+                /* Sabit hızla (linear) süzülürken çok hafif yön değişimi */
+                0%   { transform: scale(1.2) translateY(-30px) rotate(-6deg); }
+                25%  { transform: scale(1.2) translateY(-22.5px) rotate(-4deg); }
+                50%  { transform: scale(1.2) translateY(-15px)  rotate(-2deg); }
+                75%  { transform: scale(1.2) translateY(-7.5px) rotate(-1deg); }
+                100% { transform: scale(1.2) translateY(0px)    rotate(0deg); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    dayOption.addEventListener('mouseenter', () => {
+        dayOption.style.transform = 'scale(1.1)';
+        // İlk önce biraz daha yavaş tek seferlik dönüş, ardından daha uzun ve yumuşak sürekli dönüş
+        dayIcon.style.animation = 'sunSpinOnce 0.6s ease-out 0s 1, sunSlow 6s linear 0.6s infinite';
+    });
+    dayOption.addEventListener('mouseleave', () => {
+        dayIcon.style.animation = '';
+        // Seçili durumu korumak için sadece isNightMode'a göre resetle
+        updateSelection();
+        // Güneş seçili iken devam et'e basınca göz kırpsın
+        if (!isNightMode) {
+            triggerSunBlink();
+        }
+    });
+
+    nightOption.addEventListener('mouseenter', () => {
+        nightOption.style.transform = 'scale(1.1)';
+        // Ay için yukarıdan aşağı sabit hızla, süzülür gibi inen animasyon
+        nightIcon.style.animation = 'moonWobble 2.5s linear forwards';
+    });
+    nightOption.addEventListener('mouseleave', () => {
+        nightIcon.style.animation = '';
+        updateSelection();
+    });
 
     dayOption.addEventListener('click', () => {
         isNightMode = false;
@@ -1953,7 +2199,14 @@ function createDayNightSelectionMenu() {
     continueButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
     continueButton.style.transition = 'all 0.3s ease';
 
-    continueButton.addEventListener('click', () => {
+    continueButton.addEventListener('click', async () => {
+        // Eğer gece modu seçiliyse, oyuna geçmeden önce ay 2 saniye göz kırpsın
+        if (isNightMode) {
+            continueButton.disabled = true;
+            await triggerMoonBlinkForDuration(2000);
+            continueButton.disabled = false;
+        }
+
         menuContainer.style.display = 'none';
         createCarSelectionMenu();
     });
@@ -3749,6 +4002,12 @@ async function loadCarModelsForSelection() {
             
             const carModel = gltf.scene.clone();
             carModel.scale.set(car.scale, car.scale, car.scale);
+
+            // Showcase (araç seçim ekranı) için bazı büyük modelleri ekstra küçült
+            // 4. araba (index 3: Wingo), 7. araba (index 6: Snot Rod), 12. araba (index 11: The King)
+            if (i === 3 || i === 6 || i === 11) {
+                carModel.scale.multiplyScalar(0.5); // sadece seçim ekranında yarı boyuta indir
+            }
             carModel.position.set(0, 0, 0);
             
             
@@ -3858,7 +4117,8 @@ function createMiniature3DCarIcon(container, carIndex) {
         if (!model) return;
         
         carModel = model.clone();
-        carModel.scale.set(car.scale * 0.3, car.scale * 0.3, car.scale * 0.3); // Minyatür boyut
+        // Başlıktaki minyatür Şimşek McQueen ikonlarını biraz büyüttük
+        carModel.scale.set(car.scale * 0.35, car.scale * 0.35, car.scale * 0.35); // Minyatür boyut (biraz daha büyük)
         carModel.position.set(0, 0, 0);
         carModel.rotation.y = Math.PI / 4; // 45 derece döndür
         
@@ -4488,10 +4748,10 @@ function createCarSelectionMenu() {
         display: inline-block;
         width: 180px;
         height: 180px;
-        margin-right: -40px;
-        margin-left: -60px;
+        margin-right: -30px;
+        margin-left: -50px;
         margin-top: -100px;
-        transform: translateX(-40px);
+        transform: translateX(-30px);
         animation: carIconFloat 3s ease-in-out infinite, carIconPulse 2s ease-in-out infinite;
         cursor: pointer;
         transition: transform 0.3s ease, filter 0.3s ease;
@@ -4507,9 +4767,9 @@ function createCarSelectionMenu() {
         display: inline-block;
         width: 180px;
         height: 180px;
-        margin-left: -20px;
+        margin-left: -10px;
         margin-top: -100px;
-        transform: translateX(-40px);
+        transform: translateX(-50px);
         animation: carIconFloat 3s ease-in-out infinite 1.5s, carIconPulse 2s ease-in-out infinite 1s;
         cursor: pointer;
         transition: transform 0.3s ease, filter 0.3s ease;
@@ -5801,12 +6061,12 @@ function createCarSelectionMenu() {
     leftCarIcon.id = 'leftTitleCarIcon';
     leftCarIcon.style.cssText = `
         display: inline-block;
-        width: 180px;
-        height: 180px;
-        margin-right: -40px;
-        margin-left: -60px;
-        margin-top: -100px;
-        transform: translateX(-40px);
+        width: 220px;
+        height: 220px;
+        margin-right: -60px;
+        margin-left: -80px;
+        margin-top: -110px;
+        transform: translateX(-60px);
         animation: carIconFloat 3s ease-in-out infinite, carIconPulse 2s ease-in-out infinite;
         cursor: pointer;
         transition: transform 0.3s ease, filter 0.3s ease;
@@ -5820,11 +6080,11 @@ function createCarSelectionMenu() {
     rightCarIcon.id = 'rightTitleCarIcon';
     rightCarIcon.style.cssText = `
         display: inline-block;
-        width: 180px;
-        height: 180px;
-        margin-left: -20px;
-        margin-top: -100px;
-        transform: translateX(-40px);
+        width: 220px;
+        height: 220px;
+        margin-left: -40px;
+        margin-top: -110px;
+        transform: translateX(-60px);
         animation: carIconFloat 3s ease-in-out infinite 1.5s, carIconPulse 2s ease-in-out infinite 1s;
         cursor: pointer;
         transition: transform 0.3s ease, filter 0.3s ease;
@@ -6440,6 +6700,15 @@ function updateCarDisplay() {
         if (size.y > 3 || size.x > 4 || size.z > 6) {
             targetScale = Math.min(3/size.y, 4/size.x, 6/size.z);
             console.log('📉 Araç ölçeklendi:', targetScale);
+        }
+
+        // Showcase'te spesifik bazı arabaları (4., 7., 12.) ekstra küçült
+        // 4. araba -> index 3 (Wingo)
+        // 7. araba -> index 6 (Snot Rod)
+        // 12. araba -> index 11 (The King)
+        if (selectedCarIndex === 3 || selectedCarIndex === 6 || selectedCarIndex === 11) {
+            targetScale *= 0.3; // yalnızca seçim ekranında yaklaşık %70 daha küçük
+            console.log('🎚 Özel showcase ölçek faktörü uygulandı (0.3x):', targetScale);
         }
         
         // Scale animasyonu - yumuşak giriş
