@@ -35,6 +35,11 @@ let carSelectionLightsEnabled = true;
 let lightToggleButton = null; 
 
 
+// Device mode: false = laptop/desktop (default), true = mobile-friendly layout
+let isMobileMode = false;
+let mobilePhoneFrame = null; // Global phone frame container for mobile mode
+
+
 let lightIntensityPanel = null;
 let lightSliders = {
     ambient: 0.8,
@@ -236,33 +241,33 @@ const AVAILABLE_CARS = [
         name: "Lightning McQueen",
         path: "graphics_three/assets/lightning_mcqueen_cars_3.glb",
         scale: 0.5,
-        description: "Hızlı ve çevik yarış arabası"
+        description: "Fast and agile race car"
     },
     {
         name: "Mater",
         path: "graphics_three/assets/mater.glb", 
         scale: 0.4,
-        description: "Güçlü ve dayanıklı çekici"
+        description: "Powerful and durable tow truck"
     },
     {
         name: "Doc Hudson",
         path: "graphics_three/assets/doc_hudson_the_fabulous_hudson_hornet.glb",
         scale: 0.4,
-        description: "Klasik yarış efsanesi"
+        description: "Classic racing legend"
     }
     ,
     {
         name: "Wingo",
         path: "graphics_three/assets/wingo/source/Wingo.glb",
         scale: 0.12, 
-        description: "Hızlı ve şık spor arabası",
+        description: "Fast and stylish tuner car",
         
     },
      {
         name: "DJ",
         path: "graphics_three/assets/dj_cars_2_game_wii.glb",
         scale: 0.5,
-        description: "Hızlı ve sanatsever yarış arabası",
+        description: "Fast, music‑loving race car",
       
         
     },
@@ -270,7 +275,7 @@ const AVAILABLE_CARS = [
         name: "Boost",
         path: "graphics_three/assets/1999_boost.glb",
         scale: 0.5,
-        description: "Hızlı ve lider ruhlu yarış arabası",
+        description: "Fast, leader‑type race car",
       
         
     },
@@ -278,7 +283,7 @@ const AVAILABLE_CARS = [
         name: "Snot Rod",
         path: "graphics_three/assets/Snot Rod.glb",
         scale: 0.12,
-        description: "Turbo gazlı, asi drag arabası", 
+        description: "Turbocharged, rebellious drag car", 
     },
     {
         name: "Finn McMissle",
@@ -682,12 +687,28 @@ async function startGame() {
     
     scene.fog = new THREE.FogExp2(MAP_TYPES[0].fogColor, 0.01);
   
+    // Set camera and renderer size based on mobile mode
+    let canvasWidth, canvasHeight;
+    if (isMobileMode) {
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (screenArea) {
+            const rect = screenArea.getBoundingClientRect();
+            canvasWidth = rect.width;
+            canvasHeight = rect.height;
+        } else {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+        }
+    } else {
+        canvasWidth = window.innerWidth;
+        canvasHeight = window.innerHeight;
+    }
     
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); 
+    camera = new THREE.PerspectiveCamera(75, canvasWidth / canvasHeight, 0.1, 2000); 
   
     
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(canvasWidth, canvasHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
     renderer.shadowMap.autoUpdate = true;
@@ -703,9 +724,9 @@ async function startGame() {
     
     
     if (isNightMode) {
-        console.log('🌙 GECE MODU AKTIF!');
-        console.log('Ay gökyüzünde merkezi konumda (yukarı bakın)');
-        console.log('WASD tuşları ile ayı hareket ettirebilirsiniz (otomatik aktif)');
+    console.log('🌙 NIGHT MODE ACTIVE!');
+        console.log('Moon is centered in the sky (look up)');
+        console.log('You can move the moon with WASD keys (auto‑enabled)');
         canMoveMoon = true; 
         showMoonControlNotification(); 
     }
@@ -913,17 +934,48 @@ function createModernUI() {
     // Create modern UI container
     const uiContainer = document.createElement('div');
     uiContainer.id = 'modernGameUI';
-    uiContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 1000;
-        font-family: 'Arial', 'Helvetica', sans-serif;
-    `;
-    document.body.appendChild(uiContainer);
+    
+    if (isMobileMode) {
+        // Mobile: place UI inside phone frame
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (screenArea) {
+            uiContainer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 1000;
+                font-family: 'Arial', 'Helvetica', sans-serif;
+            `;
+            screenArea.appendChild(uiContainer);
+        } else {
+            uiContainer.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 1000;
+                font-family: 'Arial', 'Helvetica', sans-serif;
+            `;
+            document.body.appendChild(uiContainer);
+        }
+    } else {
+        uiContainer.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+            font-family: 'Arial', 'Helvetica', sans-serif;
+        `;
+        document.body.appendChild(uiContainer);
+    }
     
     // Create speedometer (circular gauge)
     createSpeedometer(uiContainer);
@@ -1194,47 +1246,95 @@ function createParticleOverlay(container) {
     `;
     container.appendChild(particleContainer);
     
-    // Create floating particles
-    for (let i = 0; i < 50; i++) {
-        const particle = document.createElement('div');
-        particle.style.cssText = `
-            position: absolute;
-            width: ${2 + Math.random() * 3}px;
-            height: ${2 + Math.random() * 3}px;
-            background: radial-gradient(circle, rgba(0, 255, 255, 0.8), transparent);
-            border-radius: 50%;
-            box-shadow: 0 0 ${5 + Math.random() * 10}px rgba(0, 255, 255, 0.6);
-            animation: floatParticle ${10 + Math.random() * 20}s linear infinite;
-            left: ${Math.random() * 100}%;
-            top: ${Math.random() * 100}%;
-            animation-delay: ${Math.random() * 5}s;
-        `;
-        particleContainer.appendChild(particle);
+    updateParticleOverlayForMap();
+}
+
+// Update floating particle overlay appearance based on current map
+function updateParticleOverlayForMap() {
+    const particleContainer = document.getElementById('particleOverlay');
+    if (!particleContainer) return;
+    
+    // Clear existing particles
+    particleContainer.innerHTML = '';
+    
+    const currentMap = MAP_TYPES[currentMapIndex] || MAP_TYPES[0];
+    
+    // Desert map ("Çöl") -> no particles (no rain/snow)
+    if (currentMap.name === "Çöl") {
+        particleContainer.style.display = 'none';
+        return;
     }
     
-    // Add CSS animation
+    particleContainer.style.display = 'block';
+    
+    const isSnowMap = currentMap.name === "Karlı";
+    
+    // Ensure animations exist
     if (!document.getElementById('floatParticleStyle')) {
         const style = document.createElement('style');
         style.id = 'floatParticleStyle';
         style.textContent = `
             @keyframes floatParticle {
-                0% {
-                    transform: translate(0, 0) scale(1);
-                    opacity: 0;
-                }
-                10% {
-                    opacity: 1;
-                }
-                90% {
-                    opacity: 1;
-                }
-                100% {
-                    transform: translate(${-100 + Math.random() * 200}px, ${-100 + Math.random() * 200}px) scale(0);
-                    opacity: 0;
-                }
+                0%   { transform: translate(0, 0) scale(1);   opacity: 0; }
+                10%  { opacity: 1; }
+                90%  { opacity: 1; }
+                100% { transform: translate(-80px, -40px) scale(0); opacity: 0; }
             }
         `;
         document.head.appendChild(style);
+    }
+    
+    if (!document.getElementById('snowParticleStyle')) {
+        const style = document.createElement('style');
+        style.id = 'snowParticleStyle';
+        style.textContent = `
+            @keyframes snowFallParticle {
+                0%   { transform: translateY(-40px); opacity: 0; }
+                15%  { opacity: 1; }
+                100% { transform: translateY(60px); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    const count = isSnowMap ? 80 : 50;
+    for (let i = 0; i < count; i++) {
+        const particle = document.createElement('div');
+        const size = isSnowMap ? 3 + Math.random() * 3 : 2 + Math.random() * 3;
+        const left = Math.random() * 100;
+        const top = isSnowMap ? Math.random() * -20 : Math.random() * 100;
+        const duration = isSnowMap ? 6 + Math.random() * 6 : 10 + Math.random() * 20;
+        const delay = Math.random() * 5;
+        
+        if (isSnowMap) {
+            particle.style.cssText = `
+                position: absolute;
+                width: ${size}px;
+                height: ${size}px;
+                background: rgba(255, 255, 255, 0.9);
+                border-radius: 50%;
+                box-shadow: 0 0 ${3 + Math.random() * 6}px rgba(255, 255, 255, 0.8);
+                left: ${left}%;
+                top: ${top}px;
+                animation: snowFallParticle ${duration}s linear infinite;
+                animation-delay: ${delay}s;
+            `;
+        } else {
+            particle.style.cssText = `
+                position: absolute;
+                width: ${size}px;
+                height: ${size}px;
+                background: radial-gradient(circle, rgba(0, 255, 255, 0.8), transparent);
+                border-radius: 50%;
+                box-shadow: 0 0 ${5 + Math.random() * 10}px rgba(0, 255, 255, 0.6);
+                left: ${left}%;
+                top: ${top}%;
+                animation: floatParticle ${duration}s linear infinite;
+                animation-delay: ${delay}s;
+            `;
+        }
+        
+        particleContainer.appendChild(particle);
     }
 }
 
@@ -1617,6 +1717,27 @@ function updateVisualEffects() {
     const ctx = window.effectsCtx;
     const canvas = window.effectsCanvas;
     
+    // Check current map - Desert map should have NO visual effects
+    const currentMap = MAP_TYPES[currentMapIndex] || MAP_TYPES[0];
+    const isDesertMap = currentMap.name === "Çöl";
+    
+    // Hide effects canvas and speed lines for desert map
+    if (isDesertMap) {
+        canvas.style.display = 'none';
+        const speedLines = document.getElementById('speedLines');
+        if (speedLines) {
+            speedLines.style.display = 'none';
+        }
+        return; // Don't draw anything for desert map
+    }
+    
+    // Show effects canvas and speed lines for other maps
+    canvas.style.display = 'block';
+    const speedLines = document.getElementById('speedLines');
+    if (speedLines) {
+        speedLines.style.display = 'block';
+    }
+    
     // Resize canvas if needed
     if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
         canvas.width = window.innerWidth;
@@ -1658,7 +1779,6 @@ function updateVisualEffects() {
     }
     
     // Update speed lines visibility
-    const speedLines = document.getElementById('speedLines');
     if (speedLines) {
         speedLines.style.opacity = Math.min(speedFactor * 0.8, 0.8).toString();
     }
@@ -1820,24 +1940,220 @@ function updateMoonPosition() {
 }
 
 
+// Mobile phone frame functions moved below - using the landscape version
+
 function createDayNightSelectionMenu() {
+    // Remove phone frame if switching from mobile to desktop
+    if (!isMobileMode) {
+        removeMobilePhoneFrame();
+    }
+    
     const menuContainer = document.createElement('div');
     menuContainer.id = 'dayNightMenu';
-    menuContainer.style.position = 'fixed';
-    menuContainer.style.top = '0';
-    menuContainer.style.left = '0';
-    menuContainer.style.width = '100%';
-    menuContainer.style.height = '100%';
-    menuContainer.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-    menuContainer.style.display = 'flex';
-    menuContainer.style.flexDirection = 'column';
-    menuContainer.style.alignItems = 'center';
-    menuContainer.style.justifyContent = 'center';
-    menuContainer.style.zIndex = '2000';
-    menuContainer.style.fontFamily = 'Arial, sans-serif';
+    
+    // If mobile mode, create phone frame and put menu inside it
+    if (isMobileMode) {
+        console.log('📱 Mobile mode detected, creating phone frame...');
+        const screenArea = createMobilePhoneFrame();
+        if (!screenArea) {
+            console.error('❌ Failed to create phone frame screen area!');
+            // Fallback: create menu normally
+            menuContainer.style.position = 'fixed';
+            menuContainer.style.top = '0';
+            menuContainer.style.left = '0';
+            menuContainer.style.width = '100%';
+            menuContainer.style.height = '100%';
+            menuContainer.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            menuContainer.style.display = 'flex';
+            menuContainer.style.flexDirection = 'column';
+            menuContainer.style.alignItems = 'center';
+            menuContainer.style.justifyContent = 'center';
+            menuContainer.style.zIndex = '2000';
+            menuContainer.style.fontFamily = 'Arial, sans-serif';
+            document.body.appendChild(menuContainer);
+        } else {
+            console.log('✅ Phone frame screen area created:', screenArea);
+            // First, set up menu container styles BEFORE adding content
+            menuContainer.style.position = 'absolute';
+            menuContainer.style.top = '0';
+            menuContainer.style.left = '0';
+            menuContainer.style.width = '100%';
+            menuContainer.style.height = '100%';
+            menuContainer.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            menuContainer.style.display = 'flex';
+            menuContainer.style.flexDirection = 'column';
+            menuContainer.style.alignItems = 'center';
+            menuContainer.style.justifyContent = 'center';
+            menuContainer.style.zIndex = '10'; // Higher z-index to ensure visibility
+            menuContainer.style.fontFamily = 'Arial, sans-serif';
+            menuContainer.style.overflow = 'auto';
+            menuContainer.style.visibility = 'visible';
+            menuContainer.style.opacity = '1';
+            menuContainer.style.pointerEvents = 'auto';
+            // Add menu container to phone frame screen area FIRST (before adding content)
+            screenArea.appendChild(menuContainer);
+            console.log('✅ Menu container added to phone frame screen area');
+            console.log('📱 Menu container parent:', menuContainer.parentNode?.id || 'none');
+            console.log('📱 Menu container dimensions:', menuContainer.getBoundingClientRect());
+            console.log('📱 Menu container computed display:', window.getComputedStyle(menuContainer).display);
+            console.log('📱 Menu container computed visibility:', window.getComputedStyle(menuContainer).visibility);
+            // Force a reflow to ensure styles are applied
+            void menuContainer.offsetHeight;
+            // Verify menu container is actually in the DOM
+            setTimeout(() => {
+                console.log('📱 After delay - Menu container parent:', menuContainer.parentNode?.id || 'none');
+                console.log('📱 After delay - Menu container children:', menuContainer.children.length);
+                console.log('📱 After delay - Menu container innerHTML length:', menuContainer.innerHTML.length);
+            }, 100);
+        }
+    } else {
+        menuContainer.style.position = 'fixed';
+        menuContainer.style.top = '0';
+        menuContainer.style.left = '0';
+        menuContainer.style.width = '100%';
+        menuContainer.style.height = '100%';
+        menuContainer.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.alignItems = 'center';
+        menuContainer.style.justifyContent = 'center';
+        menuContainer.style.zIndex = '2000';
+        menuContainer.style.fontFamily = 'Arial, sans-serif';
+        document.body.appendChild(menuContainer);
+    }
+
+    // Device selection (Laptop / Mobile) at the top
+    const deviceContainer = document.createElement('div');
+    deviceContainer.style.display = 'flex';
+    deviceContainer.style.gap = '16px';
+    deviceContainer.style.marginBottom = '20px';
+    deviceContainer.style.alignItems = 'center';
+
+    const deviceLabel = document.createElement('span');
+    deviceLabel.textContent = 'Device:';
+    deviceLabel.style.color = '#ffffff';
+    deviceLabel.style.fontSize = '18px';
+    deviceLabel.style.textShadow = '1px 1px 3px rgba(0,0,0,0.6)';
+    deviceContainer.appendChild(deviceLabel);
+
+    const laptopButton = document.createElement('button');
+    laptopButton.textContent = 'Laptop / Desktop';
+    laptopButton.style.padding = '10px 18px';
+    laptopButton.style.borderRadius = '20px';
+    laptopButton.style.border = '2px solid #ffd700';
+    laptopButton.style.background = 'linear-gradient(45deg, #222, #444)';
+    laptopButton.style.color = '#ffffff';
+    laptopButton.style.cursor = 'pointer';
+    laptopButton.style.fontWeight = 'bold';
+    laptopButton.style.boxShadow = '0 0 10px rgba(0,0,0,0.4)';
+
+    const mobileButton = document.createElement('button');
+    mobileButton.textContent = 'Mobile';
+    mobileButton.style.padding = '10px 24px';
+    mobileButton.style.borderRadius = '20px';
+    mobileButton.style.border = '2px solid transparent';
+    mobileButton.style.background = 'linear-gradient(45deg, #005f9e, #00bcd4)';
+    mobileButton.style.color = '#ffffff';
+    mobileButton.style.cursor = 'pointer';
+    mobileButton.style.fontWeight = 'bold';
+    mobileButton.style.boxShadow = '0 0 10px rgba(0,0,0,0.4)';
+
+    // Initial state: desktop mode (but don't reset if already set to mobile)
+    // Only set to false if it's the first time creating this menu or if explicitly reset
+    // IMPORTANT: Don't reset isMobileMode here - preserve user's choice!
+    // Only initialize if undefined
+    if (typeof isMobileMode === 'undefined') {
+        isMobileMode = false;
+    }
+    
+    // Update button styles based on current isMobileMode state
+    if (isMobileMode) {
+        laptopButton.style.borderColor = 'transparent';
+        laptopButton.style.background = 'linear-gradient(45deg, #222, #444)';
+        laptopButton.style.opacity = '0.85';
+        mobileButton.style.borderColor = '#00ffcc';
+        mobileButton.style.background = 'linear-gradient(45deg, #00b894, #00cec9)';
+        mobileButton.style.opacity = '1';
+    } else {
+        laptopButton.style.borderColor = '#ffd700';
+        laptopButton.style.background = 'linear-gradient(45deg, #222, #444)';
+        laptopButton.style.opacity = '1';
+        mobileButton.style.borderColor = 'transparent';
+        mobileButton.style.background = 'linear-gradient(45deg, #005f9e, #00bcd4)';
+        mobileButton.style.opacity = '0.85';
+    }
+
+    laptopButton.addEventListener('click', () => {
+        isMobileMode = false;
+        laptopButton.style.borderColor = '#ffd700';
+        laptopButton.style.background = 'linear-gradient(45deg, #222, #444)';
+        mobileButton.style.borderColor = 'transparent';
+        mobileButton.style.background = 'linear-gradient(45deg, #005f9e, #00bcd4)';
+        mobileButton.style.opacity = '0.85';
+        removeMobilePhoneFrame();
+        // Recreate menu without phone frame
+        const oldMenu = document.getElementById('dayNightMenu');
+        if (oldMenu) oldMenu.remove();
+        createDayNightSelectionMenu();
+        console.log('💻 Device mode: Laptop/Desktop');
+    });
+
+    mobileButton.addEventListener('click', () => {
+        console.log('📱 Mobile button clicked!');
+        isMobileMode = true;
+        console.log('📱 isMobileMode set to:', isMobileMode);
+        
+        // Update button styles
+        mobileButton.style.borderColor = '#00ffcc';
+        mobileButton.style.background = 'linear-gradient(45deg, #00b894, #00cec9)';
+        mobileButton.style.opacity = '1';
+        laptopButton.style.borderColor = 'transparent';
+        laptopButton.style.background = 'linear-gradient(45deg, #222, #444)';
+        laptopButton.style.opacity = '0.85';
+        
+        // Remove old menu
+        const oldMenu = document.getElementById('dayNightMenu');
+        if (oldMenu) {
+            console.log('📱 Removing old menu...');
+            oldMenu.remove();
+        }
+        
+        // Remove any existing phone frame
+        removeMobilePhoneFrame();
+        
+        // Small delay to ensure DOM is ready
+        setTimeout(() => {
+            console.log('📱 Creating new menu with phone frame...');
+            createDayNightSelectionMenu();
+            
+            // Verify phone frame was created
+            setTimeout(() => {
+                const phoneFrame = document.getElementById('mobilePhoneFrame');
+                const screenArea = document.getElementById('mobilePhoneScreen');
+                if (phoneFrame) {
+                    console.log('✅ Phone frame created successfully');
+                    console.log('📱 Phone frame visible:', phoneFrame.style.display !== 'none');
+                    console.log('📱 Phone frame z-index:', window.getComputedStyle(phoneFrame).zIndex);
+                } else {
+                    console.error('❌ Phone frame NOT created!');
+                }
+                if (screenArea) {
+                    console.log('✅ Screen area created successfully');
+                } else {
+                    console.error('❌ Screen area NOT created!');
+                }
+            }, 100);
+            
+            console.log('📱 Device mode: Mobile - Menu recreated');
+        }, 50);
+    });
+
+    deviceContainer.appendChild(laptopButton);
+    deviceContainer.appendChild(mobileButton);
+    menuContainer.appendChild(deviceContainer);
 
     const title = document.createElement('h1');
-    title.textContent = 'ZAMAN SEÇİMİ';
+    title.textContent = 'TIME SELECTION';
     title.style.color = '#FFFFFF';
     title.style.marginBottom = '40px';
     title.style.fontSize = '48px';
@@ -1869,12 +2185,12 @@ function createDayNightSelectionMenu() {
     dayIcon.style.position = 'relative';
 
     const dayText = document.createElement('h3');
-    dayText.textContent = 'GÜNDÜZ';
+    dayText.textContent = 'DAY';
     dayText.style.color = '#FFFFFF';
     dayText.style.margin = '0 0 10px 0';
 
     const dayDesc = document.createElement('p');
-    dayDesc.textContent = 'Güneş ışığında yarış';
+    dayDesc.textContent = 'Race in daylight';
     dayDesc.style.color = '#DDDDDD';
     dayDesc.style.margin = '0';
     dayDesc.style.fontSize = '14px';
@@ -2016,8 +2332,7 @@ function createDayNightSelectionMenu() {
     mouth.style.top = '46px';
     mouth.style.transform = 'translateX(-50%)';
 
-    dayIcon.appendChild(leftCheek);
-    dayIcon.appendChild(rightCheek);
+    // Güneş etrafındaki turuncu noktalar (yanaklar) istenmediği için eklenmiyor
     dayIcon.appendChild(mouth);
 
     // Ay için daha doğal görünüm: küçük tek göz + hafif gülümseme
@@ -2037,12 +2352,12 @@ function createDayNightSelectionMenu() {
     nightIcon.appendChild(moonSmile);
 
     const nightText = document.createElement('h3');
-    nightText.textContent = 'GECE';
+    nightText.textContent = 'NIGHT';
     nightText.style.color = '#FFFFFF';
     nightText.style.margin = '0 0 10px 0';
 
     const nightDesc = document.createElement('p');
-    nightDesc.textContent = 'Ay ışığında gece yarışı';
+    nightDesc.textContent = 'Night race under moonlight';
     nightDesc.style.color = '#DDDDDD';
     nightDesc.style.margin = '0';
     nightDesc.style.fontSize = '14px';
@@ -2186,7 +2501,7 @@ function createDayNightSelectionMenu() {
     });
 
     const continueButton = document.createElement('button');
-    continueButton.textContent = 'DEVAM ET';
+    continueButton.textContent = 'CONTINUE';
     continueButton.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
     continueButton.style.border = 'none';
     continueButton.style.borderRadius = '25px';
@@ -2199,7 +2514,81 @@ function createDayNightSelectionMenu() {
     continueButton.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
     continueButton.style.transition = 'all 0.3s ease';
 
+    // CONTINUE button wheel animation (simple emoji-based tire)
+    if (!document.getElementById('wheelSpinStyles')) {
+        const style = document.createElement('style');
+        style.id = 'wheelSpinStyles';
+        style.textContent = `
+            @keyframes wheelSpinSimple {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            @keyframes wheelSmokeUp {
+                0% { transform: translateY(0) scale(0.6); opacity: 0.7; }
+                70% { transform: translateY(-18px) scale(1.1); opacity: 0.3; }
+                100% { transform: translateY(-26px) scale(1.3); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const wheelContainer = document.createElement('div');
+    wheelContainer.style.marginTop = '16px';
+    wheelContainer.style.width = '80px';
+    wheelContainer.style.height = '80px';
+    wheelContainer.style.display = 'none';
+    wheelContainer.style.position = 'relative';
+    wheelContainer.style.borderRadius = '50%';
+    wheelContainer.style.marginInline = 'auto';
+
+    // Lastik emojisi ile basit dönen tekerlek
+    const wheel = document.createElement('div');
+    wheel.style.position = 'absolute';
+    wheel.style.top = '0';
+    wheel.style.left = '0';
+    wheel.style.right = '0';
+    wheel.style.bottom = '0';
+    wheel.style.margin = 'auto';
+    wheel.style.width = '80px';
+    wheel.style.height = '80px';
+    wheel.style.display = 'flex';
+    wheel.style.alignItems = 'center';
+    wheel.style.justifyContent = 'center';
+    wheel.style.fontSize = '60px';
+    wheel.style.textShadow = '0 0 12px rgba(0,0,0,0.8)';
+    // Arka planını siyah lastik gibi göster
+    wheel.style.background = 'radial-gradient(circle, #000 60%, transparent 62%)';
+    wheel.style.borderRadius = '50%';
+    wheel.style.animation = 'wheelSpinSimple 0.5s linear infinite';
+    wheel.textContent = '🛞';
+
+    // Duman efektleri (lastik arkasından çıkan küçük dumanlar)
+    for (let i = 0; i < 3; i++) {
+        const smoke = document.createElement('div');
+        smoke.style.position = 'absolute';
+        smoke.style.bottom = '8px';
+        smoke.style.left = '60px';
+        smoke.style.width = '10px';
+        smoke.style.height = '10px';
+        smoke.style.borderRadius = '50%';
+        smoke.style.background = 'rgba(255,255,255,0.9)';
+        smoke.style.filter = 'blur(1px)';
+        smoke.style.opacity = '0';
+        smoke.style.animation = `wheelSmokeUp 0.9s ease-out ${i * 0.15}s infinite`;
+        smoke.style.zIndex = '0';
+        wheelContainer.appendChild(smoke);
+    }
+
+    wheelContainer.appendChild(wheel);
+
     continueButton.addEventListener('click', async () => {
+        // IMPORTANT: Capture isMobileMode value BEFORE any async operations
+        const currentMobileMode = isMobileMode;
+        console.log('🔘 Continue button clicked! Current isMobileMode:', currentMobileMode);
+        
+        // Lastik animasyonunu göster
+        wheelContainer.style.display = 'block';
+
         // Eğer gece modu seçiliyse, oyuna geçmeden önce ay 2 saniye göz kırpsın
         if (isNightMode) {
             continueButton.disabled = true;
@@ -2207,12 +2596,35 @@ function createDayNightSelectionMenu() {
             continueButton.disabled = false;
         }
 
+        // Hide current menu
         menuContainer.style.display = 'none';
+        
+        // IMPORTANT: Use captured value, not current isMobileMode (it might have changed)
+        if (currentMobileMode) {
+            console.log('📱 Mobile mode ACTIVE: Preserving phone frame for car selection menu...');
+            const phoneFrame = document.getElementById('mobilePhoneFrame');
+            const screenArea = document.getElementById('mobilePhoneScreen');
+            if (!phoneFrame || !screenArea) {
+                console.log('📱 Mobile mode: Phone frame missing, creating it...');
+                createMobilePhoneFrame();
+            } else {
+                console.log('📱 Mobile mode: Phone frame exists, keeping it...');
+            }
+            // Ensure isMobileMode is still true
+            isMobileMode = true;
+        } else {
+            console.log('💻 Desktop mode: Removing phone frame...');
+            isMobileMode = false;
+            removeMobilePhoneFrame();
+        }
+        
+        // Create car selection menu (it will use phone frame if mobile mode)
+        console.log('📱 About to call createCarSelectionMenu(), isMobileMode:', isMobileMode);
         createCarSelectionMenu();
     });
 
     const instructions = document.createElement('p');
-    instructions.textContent = 'Gece modunda M tuşu ile ayı hareket ettirebilirsiniz';
+    instructions.textContent = 'In night mode, you can move the moon with the M key';
     instructions.style.color = '#CCCCCC';
     instructions.style.fontSize = '14px';
     instructions.style.marginTop = '20px';
@@ -2221,8 +2633,45 @@ function createDayNightSelectionMenu() {
     timeContainer.appendChild(nightOption);
     menuContainer.appendChild(timeContainer);
     menuContainer.appendChild(continueButton);
+    menuContainer.appendChild(wheelContainer);
     menuContainer.appendChild(instructions);
-    document.body.appendChild(menuContainer);
+    
+    // Menu is already appended to screenArea if mobile in the code above
+    // Only append to body if desktop mode
+    if (!isMobileMode) {
+        // Double check menuContainer is not already in DOM
+        if (!menuContainer.parentNode) {
+            document.body.appendChild(menuContainer);
+        }
+    } else {
+        // Mobile mode: ensure menuContainer is visible and properly styled
+        console.log('📱 Mobile mode: Menu container parent:', menuContainer.parentNode?.id || 'none');
+        console.log('📱 Mobile mode: Menu container children count:', menuContainer.children.length);
+        console.log('📱 Mobile mode: Menu container innerHTML length:', menuContainer.innerHTML.length);
+        
+        // Force visibility and ensure content is visible
+        menuContainer.style.display = 'flex';
+        menuContainer.style.visibility = 'visible';
+        menuContainer.style.opacity = '1';
+        menuContainer.style.zIndex = '10';
+        
+        // Ensure all children are visible
+        Array.from(menuContainer.children).forEach((child, index) => {
+            child.style.visibility = 'visible';
+            child.style.opacity = '1';
+            console.log(`📱 Child ${index} (${child.tagName}):`, child.style.display || 'default');
+        });
+        
+        // Verify screenArea exists and menuContainer is inside it
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (screenArea && menuContainer.parentNode === screenArea) {
+            console.log('✅ Menu container is correctly inside phone screen area');
+        } else {
+            console.error('❌ Menu container is NOT inside phone screen area!');
+            console.error('📱 Screen area:', screenArea ? 'exists' : 'missing');
+            console.error('📱 Menu parent:', menuContainer.parentNode?.id || 'none');
+        }
+    }
 }
 
 async function loadCarModel() {
@@ -3821,11 +4270,11 @@ function gameOver() {
  }
  
  gameOverDiv.innerHTML = `
-   <h2>OYUN BİTTİ!</h2>
-   <p>Final Puanınız: ${Math.floor(score)}</p>
-   <p>Ulaştığınız Harita: ${MAP_TYPES[currentMapIndex].name}</p>
-   <p style="font-size: 18px; margin-top: 20px;">Tekrar oynamak için SPACE tuşuna basın</p>
-   <p style="font-size: 14px; color: #FFB6C1;">🎵 Varsayılan müzik çalıyor...</p>
+   <h2>GAME OVER!</h2>
+   <p>Your Final Score: ${Math.floor(score)}</p>
+   <p>Reached Map: ${MAP_TYPES[currentMapIndex].name}</p>
+   <p style="font-size: 18px; margin-top: 20px;">Press SPACE to play again</p>
+   <p style="font-size: 14px; color: #FFB6C1;">🎵 Default music playing...</p>
  `;
  gameOverDiv.style.display = 'block';
 }
@@ -3892,43 +4341,87 @@ function restartGame() {
 }
 
 function onWindowResize() {
- camera.aspect = window.innerWidth / window.innerHeight;
- camera.updateProjectionMatrix();
- renderer.setSize(window.innerWidth, window.innerHeight);
+    if (isMobileMode) {
+        // Mobile: use phone frame screen dimensions
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (screenArea) {
+            const rect = screenArea.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        } else {
+            // Fallback to window size
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    } else {
+        // Desktop: use full window
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
 }
 
 
 function createGameUI() {
+    // If mobile mode, ensure phone frame exists
+    if (isMobileMode) {
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (!screenArea) {
+            createMobilePhoneFrame();
+        }
+    } else {
+        removeMobilePhoneFrame();
+    }
+    
     // Create modern UI instead of old UI
     createModernUI();
     
     // Create controls panel (smaller, modern design)
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'controlsPanel';
-    controlsContainer.style.cssText = `
-        position: fixed;
-        bottom: 30px;
-        left: 250px;
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 10px;
-        padding: 15px;
-        font-size: 12px;
-        color: #ffffff;
-        max-width: 300px;
-        pointer-events: auto;
-        z-index: 1001;
-    `;
+    controlsContainer.style.position = isMobileMode ? 'absolute' : 'fixed';
+    controlsContainer.style.background = 'rgba(0, 0, 0, 0.7)';
+    controlsContainer.style.backdropFilter = 'blur(10px)';
+    controlsContainer.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+    controlsContainer.style.borderRadius = '10px';
+    controlsContainer.style.padding = '15px';
+    controlsContainer.style.fontSize = '12px';
+    controlsContainer.style.color = '#ffffff';
+    controlsContainer.style.maxWidth = '300px';
+    controlsContainer.style.pointerEvents = 'auto';
+    controlsContainer.style.zIndex = '1001';
+    
+    if (isMobileMode) {
+        // Mobile: place at bottom-center inside phone frame
+        controlsContainer.style.bottom = '10px';
+        controlsContainer.style.left = '50%';
+        controlsContainer.style.transform = 'translateX(-50%)';
+        controlsContainer.style.fontSize = '13px';
+        controlsContainer.style.maxWidth = '90%';
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (screenArea) {
+            screenArea.appendChild(controlsContainer);
+        } else {
+            document.body.appendChild(controlsContainer);
+        }
+    } else {
+        // Desktop / laptop: keep original position
+        controlsContainer.style.bottom = '30px';
+        controlsContainer.style.left = '250px';
+        document.body.appendChild(controlsContainer);
+    }
     controlsContainer.innerHTML = `
-        <div style="font-weight: bold; margin-bottom: 10px; color: #00ffff;">🎮 KONTROLLER</div>
-        <div style="margin-bottom: 5px;">← → : Şerit Değiştir</div>
-        <div style="margin-bottom: 5px;"><strong>SPACE: ZIPLAMA 🦘</strong></div>
-        <div style="margin-bottom: 5px;">Shift/N: Nitro | Ctrl/B: Fren</div>
-        <div style="margin-bottom: 5px;">C: Kamera | P: Müzik</div>
-        ${isNightMode ? '<div style="margin-top: 10px; color: #FFD700;">🌙 GECE MODU: M + WASD</div>' : ''}
+        <div style="font-weight: bold; margin-bottom: 10px; color: #00ffff;">🎮 CONTROLS</div>
+        <div style="margin-bottom: 5px;">← → : Change Lane</div>
+        <div style="margin-bottom: 5px;"><strong>SPACE: JUMP 🦘</strong></div>
+        <div style="margin-bottom: 5px;">Shift/N: Nitro | Ctrl/B: Brake</div>
+        <div style="margin-bottom: 5px;">C: Camera | P: Music</div>
+        ${isNightMode ? '<div style="margin-top: 10px; color: #FFD700;">🌙 NIGHT MODE: M + WASD</div>' : ''}
     `;
-    document.body.appendChild(controlsContainer);
 }
 
 
@@ -3937,14 +4430,31 @@ function createCanvas() {
     let canvas = document.getElementById('gameCanvas');
     if (!canvas) {
         canvas = document.createElement('canvas');
- canvas.id = 'gameCanvas';
-        document.body.appendChild(canvas);
+        canvas.id = 'gameCanvas';
+        
+        // If mobile mode, put canvas inside phone frame
+        if (isMobileMode) {
+            const screenArea = document.getElementById('mobilePhoneScreen');
+            if (screenArea) {
+                screenArea.appendChild(canvas);
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+            } else {
+                document.body.appendChild(canvas);
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+            }
+        } else {
+            document.body.appendChild(canvas);
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+        }
     }
- canvas.style.display = 'block';
- canvas.style.margin = '0 auto';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
- return canvas;
+    canvas.style.display = 'block';
+    return canvas;
 }
 
 
@@ -4679,27 +5189,87 @@ function createEnergyWaves(container) {
 }
 
 function createCarSelectionMenu() {
+    // Remove old car selection menu but KEEP phone frame if mobile mode
+    const oldMenu = document.getElementById('carSelectionMenu');
+    if (oldMenu) {
+        if (oldMenu.cleanupHandler) {
+            oldMenu.cleanupHandler();
+        }
+        oldMenu.remove();
+    }
+    
+    // If mobile mode, create/use phone frame (DO NOT REMOVE IT)
+    let screenArea = null;
+    if (isMobileMode) {
+        // Check if phone frame already exists (from previous menu)
+        const phoneFrame = document.getElementById('mobilePhoneFrame');
+        screenArea = document.getElementById('mobilePhoneScreen');
+        
+        if (!phoneFrame || !screenArea) {
+            // Phone frame doesn't exist, create it
+            console.log('📱 Creating phone frame for car selection menu...');
+            screenArea = createMobilePhoneFrame();
+        } else {
+            // Phone frame exists, reuse it
+            console.log('📱 Phone frame exists, reusing it for car selection menu...');
+        }
+    } else {
+        // Desktop mode: remove phone frame
+        removeMobilePhoneFrame();
+    }
     
     const menuContainer = document.createElement('div');
     menuContainer.id = 'carSelectionMenu';
-    menuContainer.style.position = 'fixed';
-    menuContainer.style.top = '0';
-    menuContainer.style.left = '0';
-    menuContainer.style.width = '100%';
-    menuContainer.style.height = '100%';
-    menuContainer.style.background = `
-        radial-gradient(ellipse at top, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at bottom, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
-        linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 30%, #16213e 60%, #0f3460 100%)
-    `;
-    menuContainer.style.display = 'flex';
-    menuContainer.style.flexDirection = 'column';
-    menuContainer.style.alignItems = 'center';
-    menuContainer.style.justifyContent = 'center';
-    menuContainer.style.zIndex = '2000';
-    menuContainer.style.fontFamily = '"Segoe UI", "Arial", sans-serif';
-    menuContainer.style.overflow = 'hidden';
-    menuContainer.style.position = 'relative';
+    
+    if (isMobileMode && screenArea) {
+        // Mobile: place menu inside phone frame
+        menuContainer.style.position = 'absolute';
+        menuContainer.style.top = '0';
+        menuContainer.style.left = '0';
+        menuContainer.style.width = '100%';
+        menuContainer.style.height = '100%';
+        menuContainer.style.background = `
+            radial-gradient(ellipse at top, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
+            radial-gradient(ellipse at bottom, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
+            linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 30%, #16213e 60%, #0f3460 100%)
+        `;
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.alignItems = 'center';
+        menuContainer.style.justifyContent = 'center';
+        menuContainer.style.zIndex = '10';
+        menuContainer.style.fontFamily = '"Segoe UI", "Arial", sans-serif';
+        menuContainer.style.overflow = 'auto';
+        menuContainer.style.position = 'relative';
+        menuContainer.style.visibility = 'visible';
+        menuContainer.style.opacity = '1';
+        screenArea.appendChild(menuContainer);
+        console.log('✅ Car selection menu added to phone frame screen area');
+    } else {
+        // Desktop: full screen menu
+        menuContainer.style.position = 'fixed';
+        menuContainer.style.top = '0';
+        menuContainer.style.left = '0';
+        menuContainer.style.width = '100%';
+        menuContainer.style.height = '100%';
+        menuContainer.style.background = `
+            radial-gradient(ellipse at top, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
+            radial-gradient(ellipse at bottom, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
+            linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 30%, #16213e 60%, #0f3460 100%)
+        `;
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.alignItems = 'center';
+        menuContainer.style.justifyContent = 'center';
+        menuContainer.style.zIndex = '2000';
+        menuContainer.style.fontFamily = '"Segoe UI", "Arial", sans-serif';
+        menuContainer.style.overflow = 'hidden';
+        menuContainer.style.position = 'relative';
+        // Only append to body if not already in DOM (mobile mode already appended to screenArea)
+        if (!menuContainer.parentNode) {
+            document.body.appendChild(menuContainer);
+        }
+    }
     
     // Add animated background particles
     createAnimatedBackground(menuContainer);
@@ -4989,6 +5559,8 @@ function createCarSelectionMenu() {
 
     
     const sceneContainer = document.createElement('div');
+    sceneContainer.id = 'carSelectionStage';
+    sceneContainer.id = 'carSelectionStage';
     sceneContainer.style.position = 'relative';
     sceneContainer.style.width = '1200px'; 
     sceneContainer.style.height = '800px'; 
@@ -5347,21 +5919,39 @@ function createCarSelectionMenu() {
 
     
     const instructions = document.createElement('div');
-    instructions.style.cssText = `
-        position: absolute;
-        bottom: 20px;
-        left: 20px;
-        color: #CCCCCC;
-        font-size: 13px;
-        text-align: left;
-        line-height: 1.5;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 12px 18px;
-        border-radius: 10px;
-        border: 1px solid rgba(0, 255, 255, 0.3);
-        z-index: 100;
-        max-width: 220px;
-    `;
+    if (isMobileMode) {
+        instructions.style.cssText = `
+            position: absolute;
+            bottom: 5px;
+            left: 10px;
+            color: #CCCCCC;
+            font-size: 9px;
+            text-align: left;
+            line-height: 1.3;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            z-index: 100;
+            max-width: 150px;
+        `;
+    } else {
+        instructions.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #CCCCCC;
+            font-size: 13px;
+            text-align: left;
+            line-height: 1.5;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            z-index: 100;
+            max-width: 220px;
+        `;
+    }
     instructions.innerHTML = `
         <p><strong>🎮 Controls:</strong></p>
         <p>← → Arrow Keys: Change car | Enter/Space: Start</p>
@@ -5374,12 +5964,18 @@ function createCarSelectionMenu() {
     
     const lightControlContainer = document.createElement('div');
     lightControlContainer.style.position = 'absolute';
-    lightControlContainer.style.top = '20px';
-    lightControlContainer.style.right = '20px';
+    if (isMobileMode) {
+        lightControlContainer.style.top = '10px';
+        lightControlContainer.style.right = '10px';
+        lightControlContainer.style.gap = '6px';
+    } else {
+        lightControlContainer.style.top = '20px';
+        lightControlContainer.style.right = '20px';
+        lightControlContainer.style.gap = '10px';
+    }
     lightControlContainer.style.zIndex = '2001';
     lightControlContainer.style.display = 'flex';
     lightControlContainer.style.flexDirection = 'column';
-    lightControlContainer.style.gap = '10px';
 
     lightToggleButton = document.createElement('button');
     lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Light: ON' : '🌙 Light: OFF';
@@ -5387,9 +5983,9 @@ function createCarSelectionMenu() {
         'linear-gradient(45deg, #FFD700, #FFA500)' : 
         'linear-gradient(45deg, #2C3E50, #34495E)';
     lightToggleButton.style.border = 'none';
-    lightToggleButton.style.borderRadius = '15px';
-    lightToggleButton.style.padding = '20px 30px'; 
-    lightToggleButton.style.fontSize = '20px'; 
+    lightToggleButton.style.borderRadius = isMobileMode ? '10px' : '15px';
+    lightToggleButton.style.padding = isMobileMode ? '8px 15px' : '20px 30px'; 
+    lightToggleButton.style.fontSize = isMobileMode ? '12px' : '20px'; 
     lightToggleButton.style.color = '#FFFFFF';
     lightToggleButton.style.cursor = 'pointer';
     lightToggleButton.style.fontWeight = 'bold';
@@ -5397,16 +5993,16 @@ function createCarSelectionMenu() {
     lightToggleButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     lightToggleButton.style.transition = 'all 0.3s ease';
     lightToggleButton.style.border = '3px solid #FFD700';
-    lightToggleButton.style.minWidth = '200px';
+    lightToggleButton.style.minWidth = isMobileMode ? '140px' : '200px';
 
     
     const lightIntensityButton = document.createElement('button');
     lightIntensityButton.innerHTML = '🎛️ Light Intensity';
     lightIntensityButton.style.background = 'linear-gradient(45deg, #9B59B6, #8E44AD)';
     lightIntensityButton.style.border = 'none';
-    lightIntensityButton.style.borderRadius = '15px';
-    lightIntensityButton.style.padding = '20px 30px';
-    lightIntensityButton.style.fontSize = '20px';
+    lightIntensityButton.style.borderRadius = isMobileMode ? '10px' : '15px';
+    lightIntensityButton.style.padding = isMobileMode ? '8px 15px' : '20px 30px';
+    lightIntensityButton.style.fontSize = isMobileMode ? '12px' : '20px';
     lightIntensityButton.style.color = '#FFFFFF';
     lightIntensityButton.style.cursor = 'pointer';
     lightIntensityButton.style.fontWeight = 'bold';
@@ -5414,7 +6010,7 @@ function createCarSelectionMenu() {
     lightIntensityButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     lightIntensityButton.style.transition = 'all 0.3s ease';
     lightIntensityButton.style.border = '3px solid #9B59B6';
-    lightIntensityButton.style.minWidth = '200px';
+    lightIntensityButton.style.minWidth = isMobileMode ? '110px' : '200px';
 
     lightControlContainer.appendChild(lightToggleButton);
     lightControlContainer.appendChild(lightIntensityButton);
@@ -5441,7 +6037,16 @@ function createCarSelectionMenu() {
     
     createLightIntensityPanel();
 
-    document.body.appendChild(menuContainer);
+    // IMPORTANT: Only append to body if desktop mode
+    // In mobile mode, menuContainer is already appended to screenArea above
+    if (!isMobileMode || !screenArea) {
+        // Check if menuContainer is not already in DOM
+        if (!menuContainer.parentNode) {
+            document.body.appendChild(menuContainer);
+        }
+    } else {
+        console.log('📱 Mobile mode: Menu container already in phone frame, skipping body append');
+    }
 
     
     init3DCarSelectionScene();
@@ -5449,7 +6054,25 @@ function createCarSelectionMenu() {
     
     prevButton.addEventListener('click', () => changeSelectedCar(-1));
     nextButton.addEventListener('click', () => changeSelectedCar(1));
-    startButton.addEventListener('click', startGameWithSelectedCar);
+
+    // Start game akışı (eski menü): sadece showcase onay animasyonu + oyun
+    async function handleStartGame() {
+        if (startButton.disabled) return;
+        startButton.disabled = true;
+
+        // Showcase'teki arabayı onay animasyonu ile büyüt
+        if (currentDisplayedCar) {
+            try {
+                await playShowcaseConfirmAnimation();
+            } catch (e) {
+                console.warn('Showcase onay animasyonunda hata (eski menü):', e);
+            }
+        }
+
+        await startGameWithSelectedCar();
+    }
+
+    startButton.addEventListener('click', handleStartGame);
 
     
     [prevButton, nextButton].forEach(button => {
@@ -5495,7 +6118,7 @@ function createCarSelectionMenu() {
                 case 'Enter':
                 case 'Space':
                     e.preventDefault();
-                    startGameWithSelectedCar();
+                    handleStartGame();
                     break;
                 
                 case 'KeyL':
@@ -5932,10 +6555,30 @@ async function startGameWithSelectedCar() {
     }
     
     // Hide day/night selection menu if exists
-    const dayNightMenu = document.getElementById('dayNightSelectionMenu');
+    const dayNightMenu = document.getElementById('dayNightMenu');
     if (dayNightMenu) {
         dayNightMenu.style.display = 'none';
         dayNightMenu.remove();
+    }
+    
+    // If mobile mode, ensure phone frame stays visible for game
+    if (isMobileMode) {
+        console.log('📱 Mobile mode: Ensuring phone frame exists for game...');
+        const phoneFrame = document.getElementById('mobilePhoneFrame');
+        const screenArea = document.getElementById('mobilePhoneScreen');
+        if (!phoneFrame || !screenArea) {
+            console.log('📱 Mobile mode: Creating phone frame for game...');
+            createMobilePhoneFrame();
+        } else {
+            console.log('📱 Mobile mode: Phone frame already exists, keeping it for game');
+            // Ensure phone frame is visible
+            phoneFrame.style.display = 'flex';
+            phoneFrame.style.visibility = 'visible';
+            phoneFrame.style.opacity = '1';
+        }
+    } else {
+        // Desktop mode: remove phone frame
+        removeMobilePhoneFrame();
     }
     
     cleanup3DCarSelectionScene();
@@ -5943,9 +6586,44 @@ async function startGameWithSelectedCar() {
     // Ensure canvas is visible and on top
     const canvas = document.getElementById('gameCanvas');
     if (canvas) {
-        canvas.style.display = 'block';
-        canvas.style.zIndex = '1';
-        canvas.style.position = 'relative';
+        if (isMobileMode) {
+            // Mobile: place canvas inside phone frame screen area
+            const screenArea = document.getElementById('mobilePhoneScreen');
+            if (screenArea) {
+                // Remove canvas from current parent if any
+                if (canvas.parentNode && canvas.parentNode !== screenArea) {
+                    canvas.parentNode.removeChild(canvas);
+                }
+                // Only append if not already a child
+                if (canvas.parentNode !== screenArea) {
+                    screenArea.appendChild(canvas);
+                }
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.zIndex = '1';
+                canvas.style.display = 'block';
+                console.log('📱 Canvas placed inside phone frame screen area');
+            } else {
+                console.error('❌ Mobile mode: Screen area not found for canvas!');
+                canvas.style.display = 'block';
+                canvas.style.zIndex = '1';
+                canvas.style.position = 'relative';
+            }
+        } else {
+            // Desktop: canvas goes to body
+            if (canvas.parentNode && canvas.parentNode.id === 'mobilePhoneScreen') {
+                canvas.parentNode.removeChild(canvas);
+            }
+            if (!canvas.parentNode) {
+                document.body.appendChild(canvas);
+            }
+            canvas.style.display = 'block';
+            canvas.style.zIndex = '1';
+            canvas.style.position = 'relative';
+        }
     }
     
     // Remove any remaining UI overlays that might block the game
@@ -5956,6 +6634,179 @@ async function startGameWithSelectedCar() {
     
     gameStarted = true;
     await startGame();
+}
+
+
+// Araç seçim ekranında Start'a basınca oynayan Lightning McQueen intro animasyonu
+async function playStartIntroAnimation(parentContainer) {
+    return new Promise((resolve) => {
+        try {
+            // Eski intro varsa temizle
+            const old = document.getElementById('startIntroOverlay');
+            if (old) old.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = 'startIntroOverlay';
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.pointerEvents = 'none';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.zIndex = '2500';
+            overlay.style.overflow = 'hidden';
+
+            // Stil tanımı (sadece bir kere ekle)
+            if (!document.getElementById('startIntroStyles')) {
+                const style = document.createElement('style');
+                style.id = 'startIntroStyles';
+                style.textContent = `
+                    @keyframes introCarZoom {
+                        0% {
+                            transform: translateY(120px) scale(0.4);
+                            opacity: 0;
+                        }
+                        40% {
+                            transform: translateY(40px) scale(0.9);
+                            opacity: 1;
+                        }
+                        70% {
+                            transform: translateY(0px) scale(1.05);
+                        }
+                        100% {
+                            transform: translateY(-10px) scale(1);
+                            opacity: 0;
+                        }
+                    }
+                    @keyframes introSmoke {
+                        0% {
+                            transform: translateX(0) translateY(0) scale(0.4);
+                            opacity: 0.9;
+                        }
+                        60% {
+                            transform: translateX(-40px) translateY(-10px) scale(1.1);
+                            opacity: 0.4;
+                        }
+                        100% {
+                            transform: translateX(-80px) translateY(-20px) scale(1.4);
+                            opacity: 0;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // Eğer Lightning McQueen modeli yüklendiyse, intro için onu kullan
+            if (!loadedCarModels || !loadedCarModels[0] || !THREE || !THREE.Scene) {
+                // Model yoksa introyu atla
+                resolve();
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 800;
+            canvas.height = 400;
+            canvas.style.width = '800px';
+            canvas.style.height = '400px';
+            overlay.appendChild(canvas);
+            (parentContainer || document.body).appendChild(overlay);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, 800/400, 0.1, 100);
+            camera.position.set(0, 1.5, 6);
+            camera.lookAt(0, 0, 0);
+
+            const renderer = new THREE.WebGLRenderer({
+                canvas,
+                alpha: true,
+                antialias: true
+            });
+            renderer.setSize(800, 400);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambient);
+            const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+            dir.position.set(3, 5, 4);
+            scene.add(dir);
+
+            const carModel = loadedCarModels[0].clone();
+            carModel.traverse(c => {
+                if (c.isMesh) {
+                    c.castShadow = true;
+                    c.receiveShadow = true;
+                }
+            });
+            scene.add(carModel);
+
+            // Başlangıç ve bitiş pozisyonları / ölçek
+            // McQueen, ekranın sol alt tarafından (Controls kutusunun üstünden) içeri süzülerek gelsin
+            const startX = -6;
+            const endX = 0;
+            const startY = -1.0;
+            const endY = -0.3;
+            const zPos = 3.2;
+            const startScale = 0.5;
+            const endScale = 1.2;
+            carModel.position.set(startX, startY, zPos);
+            // Modelin ileri yönü sahne içinde ileriye baksın (geri geri gitmesin)
+            carModel.rotation.y = 0;
+            carModel.scale.setScalar(startScale);
+
+            // Duman partikülleri (CSS ile, arabanın sağ arkasından çıkan)
+            for (let i = 0; i < 6; i++) {
+                const smoke = document.createElement('div');
+                smoke.style.position = 'absolute';
+                smoke.style.bottom = '120px';
+                smoke.style.right = '140px';
+                smoke.style.width = `${14 + i * 2}px`;
+                smoke.style.height = `${14 + i * 2}px`;
+                smoke.style.borderRadius = '50%';
+                smoke.style.background = 'rgba(255,255,255,0.9)';
+                smoke.style.filter = 'blur(1px)';
+                smoke.style.opacity = '0';
+                smoke.style.animation = `introSmoke 1.1s ease-out ${0.05 * i}s forwards`;
+                overlay.appendChild(smoke);
+            }
+
+            const duration = 1500;
+            const startTime = performance.now();
+            let animId;
+
+            const animate = (now) => {
+                const t = Math.min((now - startTime) / duration, 1);
+                // Ease-out
+                const ease = 1 - Math.pow(1 - t, 3);
+                const x = startX + (endX - startX) * ease;
+                const y = startY + (endY - startY) * ease;
+                const s = startScale + (endScale - startScale) * ease;
+                carModel.position.x = x;
+                carModel.position.y = y;
+                carModel.scale.setScalar(s);
+
+                renderer.render(scene, camera);
+
+                if (t < 1) {
+                    animId = requestAnimationFrame(animate);
+                }
+            };
+
+            animId = requestAnimationFrame(animate);
+
+            setTimeout(() => {
+                if (animId) cancelAnimationFrame(animId);
+                renderer.dispose();
+                overlay.remove();
+                resolve();
+            }, duration + 100);
+        } catch (e) {
+            console.warn('Start intro animasyonu oluşturulamadı:', e);
+            resolve();
+        }
+    });
 }
 
 
@@ -6022,39 +6873,302 @@ let carSelectionRenderer = null;
 let carSelectionCanvas = null;
 let currentDisplayedCar = null;
 let carSelectionAnimationId = null;
+let isShowcaseConfirmAnimating = false; // START öncesi zoom animasyonu sırasında döndürme/bobbing kapansın
 
 
 let loadedCarModels = [];
 
+// Mobile phone frame functions - LANDSCAPE MODE (yatay telefon)
+function createMobilePhoneFrame() {
+    console.log('📱 createMobilePhoneFrame() called');
+    // Remove existing frame if any
+    removeMobilePhoneFrame();
+    
+    // Create phone frame container - LANDSCAPE (yatay) orientation
+    const phoneFrame = document.createElement('div');
+    phoneFrame.id = 'mobilePhoneFrame';
+    // Calculate phone frame dimensions for landscape mode
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    // Landscape phone: wider than tall
+    const phoneWidth = Math.min(viewportWidth * 0.9, 900);
+    const phoneHeight = Math.min(viewportHeight * 0.7, 500);
+    
+    phoneFrame.style.cssText = `
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: ${phoneWidth}px !important;
+        height: ${phoneHeight}px !important;
+        min-width: 600px !important;
+        min-height: 350px !important;
+        background: linear-gradient(145deg, #2a2a2a, #3d3d3d) !important;
+        border: 8px solid #0a0a0a !important;
+        border-radius: 40px !important;
+        padding: 20px !important;
+        box-shadow: 
+            0 0 0 8px #0a0a0a,
+            0 0 0 16px #444,
+            0 30px 80px rgba(0, 0, 0, 0.9),
+            inset 0 0 40px rgba(0, 0, 0, 0.6),
+            0 0 100px rgba(0, 150, 255, 0.3) !important;
+        z-index: 1500 !important;
+        display: flex !important;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    `;
+    console.log(`📱 Phone frame dimensions: ${phoneWidth}x${phoneHeight}px`);
+    console.log('📱 Phone frame element created');
+    
+    // Left side bezel (for landscape phone)
+    const leftBezel = document.createElement('div');
+    leftBezel.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 80px;
+        background: #0a0a0a;
+        border-radius: 0 15px 15px 0;
+        z-index: 10;
+    `;
+    phoneFrame.appendChild(leftBezel);
+    
+    // Right side bezel (for landscape phone)
+    const rightBezel = document.createElement('div');
+    rightBezel.style.cssText = `
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 80px;
+        background: #0a0a0a;
+        border-radius: 15px 0 0 15px;
+        z-index: 10;
+    `;
+    phoneFrame.appendChild(rightBezel);
+    
+    // Screen area (where all content goes) - LANDSCAPE
+    const screenArea = document.createElement('div');
+    screenArea.id = 'mobilePhoneScreen';
+    screenArea.style.cssText = `
+        width: 100%;
+        height: 100%;
+        background: transparent !important;
+        border-radius: 20px;
+        overflow: visible !important;
+        position: relative;
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    `;
+    phoneFrame.appendChild(screenArea);
+    console.log('📱 Screen area created and added to phone frame');
+    console.log('📱 Screen area dimensions:', screenArea.getBoundingClientRect());
+    
+    // Bottom bezel decoration (centered for landscape)
+    const bottomBezel = document.createElement('div');
+    bottomBezel.style.cssText = `
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100px;
+        height: 3px;
+        background: #333;
+        border-radius: 3px;
+    `;
+    screenArea.appendChild(bottomBezel);
+    
+    // Dark background overlay for outside phone frame
+    const darkOverlay = document.createElement('div');
+    darkOverlay.id = 'mobilePhoneDarkOverlay';
+    darkOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 1499;
+        pointer-events: none;
+    `;
+    document.body.appendChild(darkOverlay);
+    
+    document.body.appendChild(phoneFrame);
+    console.log('📱 Phone frame appended to body');
+    console.log('📱 Phone frame computed style:', window.getComputedStyle(phoneFrame).display);
+    console.log('📱 Phone frame position:', phoneFrame.getBoundingClientRect());
+    
+    // Add CSS for phone frame glow animation
+    if (!document.getElementById('phoneFrameGlowStyle')) {
+        const style = document.createElement('style');
+        style.id = 'phoneFrameGlowStyle';
+        style.textContent = `
+            @keyframes phoneFrameGlow {
+                0%, 100% { box-shadow: 
+                    0 0 0 6px #0a0a0a,
+                    0 0 0 10px #333,
+                    0 20px 60px rgba(0, 0, 0, 0.8),
+                    inset 0 0 30px rgba(0, 0, 0, 0.5);
+                }
+                50% { box-shadow: 
+                    0 0 0 6px #0a0a0a,
+                    0 0 0 10px #444,
+                    0 20px 60px rgba(0, 150, 255, 0.3),
+                    inset 0 0 30px rgba(0, 0, 0, 0.5);
+                }
+            }
+            #mobilePhoneFrame {
+                animation: phoneFrameGlow 3s ease-in-out infinite;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    return screenArea;
+}
 
+function removeMobilePhoneFrame() {
+    const phoneFrame = document.getElementById('mobilePhoneFrame');
+    if (phoneFrame) {
+        phoneFrame.remove();
+    }
+    const darkOverlay = document.getElementById('mobilePhoneDarkOverlay');
+    if (darkOverlay) {
+        darkOverlay.remove();
+    }
+}
 
 function createCarSelectionMenu() {
+    // IMPORTANT: Check if phone frame exists - if it does, we're in mobile mode
+    const existingPhoneFrame = document.getElementById('mobilePhoneFrame');
+    const existingScreenArea = document.getElementById('mobilePhoneScreen');
+    
+    // If phone frame exists, force isMobileMode to true
+    if (existingPhoneFrame && existingScreenArea) {
+        console.log('📱 Phone frame detected, forcing isMobileMode to true');
+        isMobileMode = true;
+    }
+    
+    console.log('📱 createCarSelectionMenu() called, isMobileMode:', isMobileMode);
+    
+    // Remove old car selection menu but KEEP phone frame if mobile mode
+    const oldMenu = document.getElementById('carSelectionMenu');
+    if (oldMenu) {
+        if (oldMenu.cleanupHandler) {
+            oldMenu.cleanupHandler();
+        }
+        oldMenu.remove();
+    }
+    
+    // If mobile mode, create/use phone frame (DO NOT REMOVE IT)
+    let screenArea = null;
+    if (isMobileMode) {
+        console.log('📱 Mobile mode active, ensuring phone frame exists...');
+        // Check if phone frame already exists (from previous menu)
+        const phoneFrame = document.getElementById('mobilePhoneFrame');
+        screenArea = document.getElementById('mobilePhoneScreen');
+        
+        if (!phoneFrame || !screenArea) {
+            // Phone frame doesn't exist, create it
+            console.log('📱 Creating phone frame for car selection menu...');
+            screenArea = createMobilePhoneFrame();
+        } else {
+            // Phone frame exists, reuse it
+            console.log('📱 Phone frame exists, reusing it for car selection menu...');
+            // Ensure phone frame is visible
+            phoneFrame.style.display = 'flex';
+            phoneFrame.style.visibility = 'visible';
+            phoneFrame.style.opacity = '1';
+            // Clear old menu content but keep phone frame structure
+            const oldMenuContent = screenArea.querySelector('#carSelectionMenu');
+            if (oldMenuContent) {
+                oldMenuContent.remove();
+            }
+        }
+    } else {
+        // Desktop mode: remove phone frame
+        console.log('💻 Desktop mode, removing phone frame...');
+        removeMobilePhoneFrame();
+    }
     
     const menuContainer = document.createElement('div');
     menuContainer.id = 'carSelectionMenu';
-    menuContainer.style.position = 'fixed';
-    menuContainer.style.top = '0';
-    menuContainer.style.left = '0';
-    menuContainer.style.width = '100%';
-    menuContainer.style.height = '100%';
-    menuContainer.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
-    menuContainer.style.display = 'flex';
-    menuContainer.style.flexDirection = 'column';
-    menuContainer.style.alignItems = 'center';
-    menuContainer.style.justifyContent = 'center';
-    menuContainer.style.zIndex = '2000';
-    menuContainer.style.fontFamily = 'Arial, sans-serif';
+    
+    if (isMobileMode && screenArea) {
+        // Mobile: place menu inside phone frame
+        menuContainer.style.position = 'absolute';
+        menuContainer.style.top = '0';
+        menuContainer.style.left = '0';
+        menuContainer.style.width = '100%';
+        menuContainer.style.height = '100%';
+        menuContainer.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.alignItems = 'center';
+        menuContainer.style.justifyContent = 'center';
+        menuContainer.style.zIndex = '10';
+        menuContainer.style.fontFamily = 'Arial, sans-serif';
+        menuContainer.style.overflow = 'auto';
+        menuContainer.style.visibility = 'visible';
+        menuContainer.style.opacity = '1';
+        menuContainer.style.pointerEvents = 'auto';
+        screenArea.appendChild(menuContainer);
+        console.log('✅ Car selection menu added to phone frame screen area');
+        console.log('📱 Menu container parent:', menuContainer.parentNode?.id || 'none');
+        console.log('📱 Menu container computed display:', window.getComputedStyle(menuContainer).display);
+        console.log('📱 Menu container computed visibility:', window.getComputedStyle(menuContainer).visibility);
+        console.log('📱 Screen area children count:', screenArea.children.length);
+    } else {
+        // Desktop: full screen menu
+        menuContainer.style.position = 'fixed';
+        menuContainer.style.top = '0';
+        menuContainer.style.left = '0';
+        menuContainer.style.width = '100%';
+        menuContainer.style.height = '100%';
+        menuContainer.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.alignItems = 'center';
+        menuContainer.style.justifyContent = 'center';
+        menuContainer.style.zIndex = '2000';
+        menuContainer.style.fontFamily = 'Arial, sans-serif';
+        menuContainer.style.overflow = 'hidden';
+        // Only append to body if not already in DOM (mobile mode already appended to screenArea)
+        if (!menuContainer.parentNode) {
+            document.body.appendChild(menuContainer);
+        }
+    }
 
     
     // Modern title with Lightning McQueen 3D icons
     const titleContainer = document.createElement('div');
-    titleContainer.style.cssText = `
-        position: relative;
-        margin-bottom: 10px;
-        margin-top: 20px;
-        text-align: center;
-        z-index: 1;
-    `;
+    if (isMobileMode) {
+        titleContainer.style.cssText = `
+            position: relative;
+            margin-bottom: 5px;
+            margin-top: 5px;
+            text-align: center;
+            z-index: 1;
+        `;
+    } else {
+        titleContainer.style.cssText = `
+            position: relative;
+            margin-bottom: 10px;
+            margin-top: 20px;
+            text-align: center;
+            z-index: 1;
+        `;
+    }
     
     // Sol araba ikonu - Lightning McQueen 3D model
     const leftCarIcon = document.createElement('div');
@@ -6186,14 +7300,25 @@ function createCarSelectionMenu() {
     
     const sceneContainer = document.createElement('div');
     sceneContainer.style.position = 'relative';
-    sceneContainer.style.width = '1200px'; 
-    sceneContainer.style.height = '800px'; 
+    if (isMobileMode) {
+        sceneContainer.style.width = '95%';
+        sceneContainer.style.height = '50%';
+        sceneContainer.style.minHeight = '320px';
+        sceneContainer.style.maxHeight = '450px';
+        sceneContainer.style.marginTop = '-20px';
+        sceneContainer.style.marginBottom = '10px';
+    } else {
+        sceneContainer.style.width = '1200px'; 
+        sceneContainer.style.height = '800px'; 
+        sceneContainer.style.marginBottom = '30px';
+    }
     sceneContainer.style.border = '3px solid #FFD700';
     sceneContainer.style.borderRadius = '15px';
     sceneContainer.style.background = 'linear-gradient(45deg, #2c3e50, #3498db)';
     sceneContainer.style.boxShadow = '0 0 30px rgba(255, 215, 0, 0.5)';
-    sceneContainer.style.marginBottom = '30px';
     sceneContainer.style.overflow = 'hidden';
+    sceneContainer.style.display = 'block';
+    sceneContainer.style.visibility = 'visible';
 
     
     carSelectionCanvas = document.createElement('canvas');
@@ -6206,73 +7331,54 @@ function createCarSelectionMenu() {
     const carInfoPanel = document.createElement('div');
     carInfoPanel.id = 'carInfoPanel';
     carInfoPanel.style.position = 'absolute';
-    carInfoPanel.style.top = '5px'; 
-    carInfoPanel.style.left = '5px'; 
-    carInfoPanel.style.background = 'rgba(0, 0, 0, 0.8)';
-    carInfoPanel.style.color = '#FFFFFF';
-    carInfoPanel.style.padding = '8px'; 
-    carInfoPanel.style.borderRadius = '6px'; 
-    carInfoPanel.style.fontSize = '12px'; 
-    carInfoPanel.style.minWidth = '100px'; 
-    carInfoPanel.style.border = '1px solid #FFD700'; 
-    carInfoPanel.style.maxWidth = '200px'; 
+    if (isMobileMode) {
+        carInfoPanel.style.top = '8px'; 
+        carInfoPanel.style.right = '8px'; 
+        carInfoPanel.style.padding = '8px'; 
+        carInfoPanel.style.fontSize = '9px'; 
+        carInfoPanel.style.minWidth = '100px'; 
+        carInfoPanel.style.maxWidth = '120px';
+        carInfoPanel.style.borderRadius = '8px';
+        carInfoPanel.style.lineHeight = '1.2';
+    } else {
+        carInfoPanel.style.top = '20px'; 
+        carInfoPanel.style.right = '20px'; 
+        carInfoPanel.style.padding = '25px'; 
+        carInfoPanel.style.fontSize = '14px'; 
+        carInfoPanel.style.minWidth = '250px'; 
+        carInfoPanel.style.maxWidth = '280px';
+        carInfoPanel.style.borderRadius = '15px';
+    }
+    carInfoPanel.style.background = 'linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 26, 46, 0.95))';
+    carInfoPanel.style.color = '#FFFFFF'; 
+    carInfoPanel.style.border = '2px solid rgba(255, 215, 0, 0.6)'; 
+    carInfoPanel.style.boxShadow = '0 0 30px rgba(255, 215, 0, 0.5), inset 0 0 30px rgba(255, 215, 0, 0.1)';
+    carInfoPanel.style.zIndex = '10';
+    carInfoPanel.style.animation = 'panelGlow 3s ease-in-out infinite';
     sceneContainer.appendChild(carInfoPanel);
-    
-    // Sağ tarafta performans karşılaştırma paneli ekle
-    const performancePanel = document.createElement('div');
-    performancePanel.id = 'performancePanel';
-    performancePanel.style.cssText = `
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 26, 46, 0.95));
-        backdrop-filter: blur(15px);
-        color: #FFFFFF;
-        padding: 25px;
-        border-radius: 15px;
-        font-size: 14px;
-        min-width: 250px;
-        border: 2px solid rgba(255, 215, 0, 0.6);
-        box-shadow: 
-            0 0 30px rgba(255, 215, 0, 0.5),
-            inset 0 0 30px rgba(255, 215, 0, 0.1);
-        z-index: 10;
-        animation: panelGlow 3s ease-in-out infinite;
-    `;
-    performancePanel.innerHTML = `
-        <div style="color: #FFD700; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);">
-            📊 COMPARISON
-        </div>
-        <div style="color: #CCCCCC; font-size: 12px; line-height: 1.8;">
-            <div style="margin-bottom: 10px;">💡 Compare vehicles</div>
-            <div style="margin-bottom: 10px;">⚡ Performance metrics</div>
-            <div style="margin-bottom: 10px;">🎯 Each vehicle is unique</div>
-            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 215, 0, 0.3);">
-                <div style="color: #00FFFF; font-size: 11px;">
-                    💡 Tip: Cars rotate automatically
-                </div>
-            </div>
-        </div>
-    `;
-    sceneContainer.appendChild(performancePanel);
 
     menuContainer.appendChild(sceneContainer);
 
     
     const controlsContainer = document.createElement('div');
     controlsContainer.style.display = 'flex';
-    controlsContainer.style.gap = '20px';
+    controlsContainer.style.gap = isMobileMode ? '10px' : '20px';
     controlsContainer.style.alignItems = 'center';
-    controlsContainer.style.marginBottom = '30px';
+    controlsContainer.style.marginBottom = isMobileMode ? '15px' : '30px';
+    controlsContainer.style.justifyContent = 'center';
+    if (isMobileMode) {
+        controlsContainer.style.flexDirection = 'row';
+        controlsContainer.style.flexWrap = 'nowrap';
+    }
 
     
     const prevButton = document.createElement('button');
     prevButton.innerHTML = '⬅️ PREVIOUS';
     prevButton.style.background = 'linear-gradient(45deg, #e74c3c, #c0392b)';
     prevButton.style.border = 'none';
-    prevButton.style.borderRadius = '15px';
-    prevButton.style.padding = '15px 25px';
-    prevButton.style.fontSize = '18px';
+    prevButton.style.borderRadius = isMobileMode ? '10px' : '15px';
+    prevButton.style.padding = isMobileMode ? '8px 15px' : '15px 25px';
+    prevButton.style.fontSize = isMobileMode ? '12px' : '18px';
     prevButton.style.color = '#FFFFFF';
     prevButton.style.cursor = 'pointer';
     prevButton.style.fontWeight = 'bold';
@@ -6285,9 +7391,9 @@ function createCarSelectionMenu() {
     nextButton.innerHTML = 'NEXT ➡️';
     nextButton.style.background = 'linear-gradient(45deg, #3498db, #2980b9)';
     nextButton.style.border = 'none';
-    nextButton.style.borderRadius = '15px';
-    nextButton.style.padding = '15px 25px';
-    nextButton.style.fontSize = '18px';
+    nextButton.style.borderRadius = isMobileMode ? '10px' : '15px';
+    nextButton.style.padding = isMobileMode ? '8px 15px' : '15px 25px';
+    nextButton.style.fontSize = isMobileMode ? '12px' : '18px';
     nextButton.style.color = '#FFFFFF';
     nextButton.style.cursor = 'pointer';
     nextButton.style.fontWeight = 'bold';
@@ -6300,9 +7406,9 @@ function createCarSelectionMenu() {
     carIndexDisplay.id = 'carIndexDisplay';
     carIndexDisplay.style.background = 'rgba(255, 255, 255, 0.2)';
     carIndexDisplay.style.color = '#FFFFFF';
-    carIndexDisplay.style.padding = '10px 20px';
-    carIndexDisplay.style.borderRadius = '20px';
-    carIndexDisplay.style.fontSize = '16px';
+    carIndexDisplay.style.padding = isMobileMode ? '6px 12px' : '10px 20px';
+    carIndexDisplay.style.borderRadius = isMobileMode ? '12px' : '20px';
+    carIndexDisplay.style.fontSize = isMobileMode ? '12px' : '16px';
     carIndexDisplay.style.fontWeight = 'bold';
     carIndexDisplay.style.border = '2px solid #FFD700';
 
@@ -6352,21 +7458,39 @@ function createCarSelectionMenu() {
 
     
     const instructions = document.createElement('div');
-    instructions.style.cssText = `
-        position: absolute;
-        bottom: 20px;
-        left: 20px;
-        color: #CCCCCC;
-        font-size: 13px;
-        text-align: left;
-        line-height: 1.5;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 12px 18px;
-        border-radius: 10px;
-        border: 1px solid rgba(0, 255, 255, 0.3);
-        z-index: 100;
-        max-width: 220px;
-    `;
+    if (isMobileMode) {
+        instructions.style.cssText = `
+            position: absolute;
+            bottom: 5px;
+            left: 10px;
+            color: #CCCCCC;
+            font-size: 9px;
+            text-align: left;
+            line-height: 1.3;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            z-index: 100;
+            max-width: 150px;
+        `;
+    } else {
+        instructions.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #CCCCCC;
+            font-size: 13px;
+            text-align: left;
+            line-height: 1.5;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            z-index: 100;
+            max-width: 220px;
+        `;
+    }
     instructions.innerHTML = `
         <p><strong>🎮 Controls:</strong></p>
         <p>← → Arrow Keys: Change car | Enter/Space: Start</p>
@@ -6379,12 +7503,18 @@ function createCarSelectionMenu() {
     
     const lightControlContainer = document.createElement('div');
     lightControlContainer.style.position = 'absolute';
-    lightControlContainer.style.top = '20px';
-    lightControlContainer.style.right = '20px';
+    if (isMobileMode) {
+        lightControlContainer.style.top = '10px';
+        lightControlContainer.style.right = '10px';
+        lightControlContainer.style.gap = '4px';
+    } else {
+        lightControlContainer.style.top = '20px';
+        lightControlContainer.style.right = '20px';
+        lightControlContainer.style.gap = '10px';
+    }
     lightControlContainer.style.zIndex = '2001';
     lightControlContainer.style.display = 'flex';
     lightControlContainer.style.flexDirection = 'column';
-    lightControlContainer.style.gap = '10px';
 
     lightToggleButton = document.createElement('button');
     lightToggleButton.innerHTML = carSelectionLightsEnabled ? '💡 Light: ON' : '🌙 Light: OFF';
@@ -6392,9 +7522,9 @@ function createCarSelectionMenu() {
         'linear-gradient(45deg, #FFD700, #FFA500)' : 
         'linear-gradient(45deg, #2C3E50, #34495E)';
     lightToggleButton.style.border = 'none';
-    lightToggleButton.style.borderRadius = '15px';
-    lightToggleButton.style.padding = '20px 30px'; 
-    lightToggleButton.style.fontSize = '20px'; 
+    lightToggleButton.style.borderRadius = isMobileMode ? '8px' : '15px';
+    lightToggleButton.style.padding = isMobileMode ? '6px 10px' : '20px 30px'; 
+    lightToggleButton.style.fontSize = isMobileMode ? '10px' : '20px'; 
     lightToggleButton.style.color = '#FFFFFF';
     lightToggleButton.style.cursor = 'pointer';
     lightToggleButton.style.fontWeight = 'bold';
@@ -6402,16 +7532,16 @@ function createCarSelectionMenu() {
     lightToggleButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     lightToggleButton.style.transition = 'all 0.3s ease';
     lightToggleButton.style.border = '3px solid #FFD700';
-    lightToggleButton.style.minWidth = '250px';
+    lightToggleButton.style.minWidth = isMobileMode ? '110px' : '250px';
 
     
     const lightIntensityButton = document.createElement('button');
     lightIntensityButton.innerHTML = '🎛️ Light Intensity';
     lightIntensityButton.style.background = 'linear-gradient(45deg, #9B59B6, #8E44AD)';
     lightIntensityButton.style.border = 'none';
-    lightIntensityButton.style.borderRadius = '15px';
-    lightIntensityButton.style.padding = '20px 30px';
-    lightIntensityButton.style.fontSize = '20px';
+    lightIntensityButton.style.borderRadius = isMobileMode ? '8px' : '15px';
+    lightIntensityButton.style.padding = isMobileMode ? '6px 10px' : '20px 30px';
+    lightIntensityButton.style.fontSize = isMobileMode ? '10px' : '20px';
     lightIntensityButton.style.color = '#FFFFFF';
     lightIntensityButton.style.cursor = 'pointer';
     lightIntensityButton.style.fontWeight = 'bold';
@@ -6419,7 +7549,7 @@ function createCarSelectionMenu() {
     lightIntensityButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.4)';
     lightIntensityButton.style.transition = 'all 0.3s ease';
     lightIntensityButton.style.border = '3px solid #9B59B6';
-    lightIntensityButton.style.minWidth = '200px';
+    lightIntensityButton.style.minWidth = isMobileMode ? '110px' : '200px';
 
     lightControlContainer.appendChild(lightToggleButton);
     lightControlContainer.appendChild(lightIntensityButton);
@@ -6446,15 +7576,46 @@ function createCarSelectionMenu() {
     
     createLightIntensityPanel();
 
-    document.body.appendChild(menuContainer);
+    // IMPORTANT: Only append to body if desktop mode
+    // In mobile mode, menuContainer is already appended to screenArea above
+    if (!isMobileMode || !screenArea) {
+        // Check if menuContainer is not already in DOM
+        if (!menuContainer.parentNode) {
+            document.body.appendChild(menuContainer);
+        }
+    } else {
+        console.log('📱 Mobile mode: Menu container already in phone frame, skipping body append');
+    }
 
     
     init3DCarSelectionScene();
-
+    
     
     prevButton.addEventListener('click', () => changeSelectedCar(-1));
     nextButton.addEventListener('click', () => changeSelectedCar(1));
-    startButton.addEventListener('click', startGameWithSelectedCar);
+
+    // Start game akışı (yeni menü): showcase'teki arabaya uzun onay animasyonu, ardından direkt oyun
+    async function handleStartGameV2() {
+        if (startButton.disabled) return;
+        startButton.disabled = true;
+
+        // 1) Showcase'teki seçili arabayı biraz büyütüp ekrana yaklaştır
+        if (currentDisplayedCar) {
+            try {
+                await playShowcaseConfirmAnimation();
+            } catch (e) {
+                console.warn('Showcase onay animasyonunda hata:', e);
+            }
+        }
+
+        // 2) Araç seçim menüsünü gizle
+        const selMenu = document.getElementById('carSelectionMenu');
+        if (selMenu) selMenu.style.display = 'none';
+
+        await startGameWithSelectedCar();
+    }
+
+    startButton.addEventListener('click', handleStartGameV2);
 
     
     [prevButton, nextButton].forEach(button => {
@@ -6500,7 +7661,7 @@ function createCarSelectionMenu() {
                 case 'Enter':
                 case 'Space':
                     e.preventDefault();
-                    startGameWithSelectedCar();
+                    handleStartGameV2();
                     break;
                 
                 case 'KeyL':
@@ -6582,20 +7743,24 @@ async function init3DCarSelectionScene() {
     carSelectionScene.add(backLight);
 
     
-    const platformGeometry = new THREE.CylinderGeometry(3, 3, 0.1, 32);
+    // Platform boyutunu artır
+    const platformRadius = 3.5;
+    const platformGeometry = new THREE.CylinderGeometry(platformRadius, platformRadius, 0.1, 32);
     const platformMaterial = new THREE.MeshLambertMaterial({ 
         color: 0x2c3e50,
         transparent: true,
         opacity: 0.9
     });
     const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-    platform.position.y = -0.5;
+    // Mobil modda platformu daha yukarıda göster
+    platform.position.y = isMobileMode ? 0.7 : -0.5;
     platform.receiveShadow = true;
     carSelectionScene.add(platform);
 
     
-    // Gelişmiş dönen halka - daha büyük ve parlak
-    const ringGeometry = new THREE.TorusGeometry(4.2, 0.18, 16, 64);
+    // Gelişmiş dönen halka - daha büyük ve parlak (boyut artırıldı)
+    const ringRadius = 4.8;
+    const ringGeometry = new THREE.TorusGeometry(ringRadius, 0.18, 16, 64);
     const ringMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xFFD700,
         transparent: true,
@@ -6604,13 +7769,15 @@ async function init3DCarSelectionScene() {
         emissiveIntensity: 0.5
     });
     const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.position.y = -0.45;
+    // Mobil modda halkayı daha yukarıda göster
+    ring.position.y = isMobileMode ? 0.75 : -0.45;
     ring.rotation.x = Math.PI / 2;
     ring.name = 'rotatingRing';
     carSelectionScene.add(ring);
     
-    // İç halka - daha küçük, ters yönde dönen
-    const innerRingGeometry = new THREE.TorusGeometry(3.4, 0.12, 12, 48);
+    // İç halka - daha küçük, ters yönde dönen (boyut artırıldı)
+    const innerRingRadius = 4.0;
+    const innerRingGeometry = new THREE.TorusGeometry(innerRingRadius, 0.12, 12, 48);
     const innerRingMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x00FFFF,
         transparent: true,
@@ -6619,14 +7786,16 @@ async function init3DCarSelectionScene() {
         emissiveIntensity: 0.3
     });
     const innerRing = new THREE.Mesh(innerRingGeometry, innerRingMaterial);
-    innerRing.position.y = -0.44;
+    // Mobil modda iç halkayı daha yukarıda göster
+    innerRing.position.y = isMobileMode ? 0.76 : -0.44;
     innerRing.rotation.x = Math.PI / 2;
     innerRing.name = 'innerRotatingRing';
     carSelectionScene.add(innerRing);
     
     // Platform altı ışık efekti
     const platformLight = new THREE.PointLight(0x00FFFF, 1.5, 8);
-    platformLight.position.set(0, -0.3, 0);
+    // Mobil modda platform ışığını daha yukarıda göster
+    platformLight.position.set(0, isMobileMode ? 1.2 : -0.3, 0);
     carSelectionScene.add(platformLight);
     
     // Platform üstü spot ışık
@@ -6683,7 +7852,9 @@ function updateCarDisplay() {
     
     if (loadedCarModels && loadedCarModels[selectedCarIndex] && loadedCarModels[selectedCarIndex] !== null) {
         currentDisplayedCar = loadedCarModels[selectedCarIndex].clone();
-        currentDisplayedCar.position.set(0, 0.7, 0); 
+        // Mobil modda arabayı daha yukarıda göster
+        const carYPosition = isMobileMode ? 2.2 : 0.7;
+        currentDisplayedCar.position.set(0, carYPosition, 0); 
         currentDisplayedCar.rotation.set(0, 0, 0); // Başlangıç rotasyonu
         
         // Araç değişiminde özel efekt - scale animasyonu
@@ -6725,7 +7896,7 @@ function updateCarDisplay() {
         };
         scaleAnimation();
         
-        console.log('✅ Yeni araba Y=0.7 merkezde eklendi:', currentDisplayedCar.position);
+        console.log(`✅ Yeni araba Y=${carYPosition} merkezde eklendi:`, currentDisplayedCar.position);
         
         // Gelişmiş gölge ve ışık ayarları
         currentDisplayedCar.traverse((child) => {
@@ -6783,69 +7954,86 @@ function updateCarDisplay() {
         const handlingValue = isGangCar ? 75 + Math.floor(Math.random() * 15) : 80 + Math.floor(Math.random() * 15);
         const nitroValue = isGangCar ? 95 + Math.floor(Math.random() * 5) : 70 + Math.floor(Math.random() * 20);
         
+        const isMobile = isMobileMode;
+        const nameFontSize = isMobile ? '16px' : '28px';
+        const descFontSize = isMobile ? '9px' : '14px';
+        const metricsHeaderFontSize = isMobile ? '11px' : '18px';
+        const statLabelFontSize = isMobile ? '9px' : '13px';
+        const statValueFontSize = isMobile ? '9px' : '13px';
+        const statusFontSize = isMobile ? '9px' : '14px';
+        const statusIconSize = isMobile ? '12px' : '20px';
+        const marginBottom = isMobile ? '8px' : '15px';
+        const marginTop = isMobile ? '10px' : '20px';
+        const paddingTop = isMobile ? '8px' : '15px';
+        const marginBottomStat = isMobile ? '6px' : '12px';
+        const marginBottomLabel = isMobile ? '3px' : '5px';
+        const barHeight = isMobile ? '5px' : '8px';
+        const statusMarginTop = isMobile ? '8px' : '15px';
+        const statusPaddingTop = isMobile ? '8px' : '15px';
+        
         carInfoPanel.innerHTML = `
             <div style="position: relative;">
-                <h3 style="margin: 0 0 15px 0; color: #FFD700; font-size: 28px; text-shadow: 0 0 20px rgba(255, 215, 0, 0.8); animation: titlePulse 2s ease-in-out infinite;">
+                <h3 style="margin: 0 0 ${marginBottom} 0; color: #FFD700; font-size: ${nameFontSize}; text-shadow: 0 0 20px rgba(255, 215, 0, 0.8); animation: titlePulse 2s ease-in-out infinite;">
                     ${car.name}
                 </h3>
-                <p style="margin: 0 0 20px 0; color: #00FFFF; font-size: 14px; line-height: 1.6;">${car.description}</p>
+                <p style="margin: 0 0 ${marginBottom} 0; color: #00FFFF; font-size: ${descFontSize}; line-height: 1.4;">${car.description}</p>
                 
-                <!-- Performans Göstergeleri -->
-                <div style="margin-top: 20px; border-top: 1px solid rgba(0, 255, 255, 0.3); padding-top: 15px;">
-                    <div style="color: #00FFFF; font-size: 18px; margin-bottom: 15px; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);">
+                <!-- Performance Metrics -->
+                <div style="margin-top: ${marginTop}; border-top: 1px solid rgba(0, 255, 255, 0.3); padding-top: ${paddingTop};">
+                    <div style="color: #00FFFF; font-size: ${metricsHeaderFontSize}; margin-bottom: ${marginBottom}; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);">
                         ⚡ PERFORMANCE METRICS
                     </div>
                     
-                    <!-- Hız -->
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="color: #FFFFFF; font-size: 13px;">🚀 HIZ</span>
-                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${speedValue}%</span>
+                    <!-- Speed -->
+                    <div style="margin-bottom: ${marginBottomStat};">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: ${marginBottomLabel};">
+                            <span style="color: #FFFFFF; font-size: ${statLabelFontSize};">🚀 SPEED</span>
+                            <span style="color: #FFD700; font-size: ${statValueFontSize}; font-weight: bold;">${speedValue}%</span>
                         </div>
-                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 255, 0.3);">
+                        <div style="background: rgba(0, 0, 0, 0.5); height: ${barHeight}; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 255, 0.3);">
                             <div class="statBar" data-value="${speedValue}" style="background: linear-gradient(90deg, #00FFFF, #00FF88); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(0, 255, 255, 0.6);"></div>
                         </div>
                     </div>
                     
-                    <!-- Güç -->
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="color: #FFFFFF; font-size: 13px;">💪 GÜÇ</span>
-                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${powerValue}%</span>
+                    <!-- Power -->
+                    <div style="margin-bottom: ${marginBottomStat};">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: ${marginBottomLabel};">
+                            <span style="color: #FFFFFF; font-size: ${statLabelFontSize};">💪 POWER</span>
+                            <span style="color: #FFD700; font-size: ${statValueFontSize}; font-weight: bold;">${powerValue}%</span>
                         </div>
-                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 68, 0, 0.3);">
+                        <div style="background: rgba(0, 0, 0, 0.5); height: ${barHeight}; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 68, 0, 0.3);">
                             <div class="statBar" data-value="${powerValue}" style="background: linear-gradient(90deg, #FF4400, #FF8800); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(255, 68, 0, 0.6);"></div>
                         </div>
                     </div>
                     
-                    <!-- Manevra -->
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="color: #FFFFFF; font-size: 13px;">🎯 MANEVRA</span>
-                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${handlingValue}%</span>
+                    <!-- Handling -->
+                    <div style="margin-bottom: ${marginBottomStat};">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: ${marginBottomLabel};">
+                            <span style="color: #FFFFFF; font-size: ${statLabelFontSize};">🎯 HANDLING</span>
+                            <span style="color: #FFD700; font-size: ${statValueFontSize}; font-weight: bold;">${handlingValue}%</span>
                         </div>
-                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 0, 0.3);">
+                        <div style="background: rgba(0, 0, 0, 0.5); height: ${barHeight}; border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 0, 0.3);">
                             <div class="statBar" data-value="${handlingValue}" style="background: linear-gradient(90deg, #00FF00, #88FF00); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);"></div>
                         </div>
                     </div>
                     
                     <!-- Nitro -->
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="color: #FFFFFF; font-size: 13px;">⚡ NİTRO</span>
-                            <span style="color: #FFD700; font-size: 13px; font-weight: bold;">${nitroValue}%</span>
+                    <div style="margin-bottom: ${marginBottomStat};">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: ${marginBottomLabel};">
+                            <span style="color: #FFFFFF; font-size: ${statLabelFontSize};">⚡ NITRO</span>
+                            <span style="color: #FFD700; font-size: ${statValueFontSize}; font-weight: bold;">${nitroValue}%</span>
                         </div>
-                        <div style="background: rgba(0, 0, 0, 0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 215, 0, 0.3);">
+                        <div style="background: rgba(0, 0, 0, 0.5); height: ${barHeight}; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255, 215, 0, 0.3);">
                             <div class="statBar" data-value="${nitroValue}" style="background: linear-gradient(90deg, #FFD700, #FFA500); height: 100%; width: 0%; transition: width 1s ease-out; box-shadow: 0 0 10px rgba(255, 215, 0, 0.6);"></div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Durum -->
-                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0, 255, 255, 0.3);">
-                    <div style="color: #00FF00; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 20px;">${loadedCarModels[selectedCarIndex] ? '✅' : '❌'}</span>
-                        <span><strong>Durum:</strong> ${loadedCarModels[selectedCarIndex] ? 'Hazır' : 'Yüklenmedi'}</span>
+                <!-- Status -->
+                <div style="margin-top: ${statusMarginTop}; padding-top: ${statusPaddingTop}; border-top: 1px solid rgba(0, 255, 255, 0.3);">
+                    <div style="color: #00FF00; font-size: ${statusFontSize}; display: flex; align-items: center; gap: ${isMobile ? '4px' : '8px'};">
+                        <span style="font-size: ${statusIconSize};">${loadedCarModels[selectedCarIndex] ? '✅' : '❌'}</span>
+                        <span><strong>Status:</strong> ${loadedCarModels[selectedCarIndex] ? 'Ready' : 'Not Loaded'}</span>
                     </div>
                 </div>
             </div>
@@ -6864,6 +8052,60 @@ function updateCarDisplay() {
     if (carIndexDisplay) {
         carIndexDisplay.textContent = `${selectedCarIndex + 1} / ${AVAILABLE_CARS.length}`;
     }
+}
+
+
+// Showcase'te seçili araba için kısa onay animasyonu (zoom + hafif zıplama)
+async function playShowcaseConfirmAnimation() {
+    return new Promise((resolve) => {
+        try {
+            if (!currentDisplayedCar) {
+                resolve();
+                return;
+            }
+
+            isShowcaseConfirmAnimating = true;
+
+            const baseScale = currentDisplayedCar.scale.x || 1;
+            const targetScale = baseScale * 1.6;
+            const startY = currentDisplayedCar.position.y;
+            const peakY = startY + 0.5;
+
+            const duration = 1500; // ~1.5 saniye
+            const startTime = performance.now();
+
+            const animate = (now) => {
+                const t = Math.min((now - startTime) / duration, 1);
+                // Ease in-out
+                const ease = t < 0.5
+                    ? 2 * t * t
+                    : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+                // Döndürmeden, sadece kameraya doğru zoom hissi
+                const s = baseScale + (targetScale - baseScale) * ease;
+                currentDisplayedCar.scale.setScalar(s);
+
+                // Hafif zıplama: yukarı ve geri aşağı
+                const y = startY + (peakY - startY) * Math.sin(ease * Math.PI);
+                currentDisplayedCar.position.y = y;
+
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Ölçek ve pozisyonu tam olarak eski haline döndür
+                    currentDisplayedCar.scale.setScalar(baseScale);
+                    currentDisplayedCar.position.y = startY;
+                    isShowcaseConfirmAnimating = false;
+                    resolve();
+                }
+            };
+
+            requestAnimationFrame(animate);
+        } catch (e) {
+            console.warn('playShowcaseConfirmAnimation sırasında hata:', e);
+            resolve();
+        }
+    });
 }
 
 
@@ -7131,14 +8373,10 @@ function carSelectionAnimationLoop() {
     
     try {
         
-        if (currentDisplayedCar) {
-            // Yavaş 360° döndürme - daha smooth
-            currentDisplayedCar.rotation.y += 0.008; 
-            
-            // Yumuşak yukarı-aşağı hareket
+        // Showcase'teki araç normalde yavaşça dönsün, ama onay (zoom) animasyonu sırasında sabit dursun
+        if (currentDisplayedCar && !isShowcaseConfirmAnimating) {
+            currentDisplayedCar.rotation.y += 0.008;
             currentDisplayedCar.position.y = 0.7 + Math.sin(Date.now() * 0.002) * 0.15;
-            
-            // Hafif sallanma efekti (daha dinamik)
             currentDisplayedCar.rotation.z = Math.sin(Date.now() * 0.003) * 0.05;
             currentDisplayedCar.rotation.x = Math.sin(Date.now() * 0.004) * 0.03;
         }
@@ -7216,10 +8454,21 @@ function changeMap() {
     }
 
     createRoad(newMap);
+    // Update UI particle overlay according to new map
+    updateParticleOverlayForMap();
     
-    
-  
-    
+    // Update visual effects (hide/show based on map type)
+    const effectsCanvas = document.getElementById('effectsCanvas');
+    const speedLines = document.getElementById('speedLines');
+    if (newMap.name === "Çöl") {
+        // Desert map - hide all rain/particle effects
+        if (effectsCanvas) effectsCanvas.style.display = 'none';
+        if (speedLines) speedLines.style.display = 'none';
+    } else {
+        // Other maps - show effects
+        if (effectsCanvas) effectsCanvas.style.display = 'block';
+        if (speedLines) speedLines.style.display = 'block';
+    }
     
     clearObstaclesAndCoins();
     
